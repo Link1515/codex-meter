@@ -1,10 +1,11 @@
 :root {
-  color: #1f2933;
-  background: #eef2f5;
+  color: #e5edf5;
+  background: #0c1117;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  color-scheme: dark;
 }
 
 * {
@@ -15,7 +16,7 @@ body {
   margin: 0;
   min-width: 330px;
   min-height: 300px;
-  background: #eef2f5;
+  background: #0c1117;
 }
 
 button {
@@ -26,8 +27,8 @@ button {
   width: 100vw;
   min-height: 100vh;
   padding: 12px;
-  background: #f7f9fb;
-  border: 1px solid #d8e0e7;
+  background: #101820;
+  border: 1px solid #263241;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -60,7 +61,7 @@ button {
 }
 
 .app-title {
-  color: #111827;
+  color: #f4f7fb;
   font-size: 13px;
   font-weight: 700;
 }
@@ -69,7 +70,7 @@ button {
 .metric-label,
 .metric span,
 .command-preview {
-  color: #687684;
+  color: #93a4b7;
   font-size: 11px;
 }
 
@@ -80,30 +81,30 @@ button {
 .icon-button {
   width: 30px;
   height: 30px;
-  border: 1px solid #d2dbe3;
+  border: 1px solid #324153;
   border-radius: 7px;
-  color: #4b5968;
-  background: #ffffff;
+  color: #b7c3d0;
+  background: #16212b;
   display: inline-grid;
   place-items: center;
 }
 
 .icon-button:hover,
 .refresh-button:hover {
-  background: #f1f5f8;
+  background: #1c2a37;
 }
 
 .icon-button-active {
-  color: #0f5132;
-  border-color: #9ccfb4;
-  background: #e9f7ef;
+  color: #7dd3a8;
+  border-color: #2f8f62;
+  background: #123525;
 }
 
 .usage-panel {
   padding: 14px;
-  border: 1px solid #d8e0e7;
+  border: 1px solid #2a3747;
   border-radius: 8px;
-  background: #ffffff;
+  background: #131d27;
   display: grid;
   gap: 12px;
 }
@@ -115,7 +116,7 @@ button {
 
 .metric-value {
   margin-top: 1px;
-  color: #102033;
+  color: #f8fafc;
   font-size: 40px;
   line-height: 1;
   font-weight: 750;
@@ -123,10 +124,10 @@ button {
 
 .pin-badge {
   padding: 3px 7px;
-  border: 1px solid #9ccfb4;
+  border: 1px solid #2f8f62;
   border-radius: 999px;
-  color: #0f5132;
-  background: #e9f7ef;
+  color: #7dd3a8;
+  background: #123525;
   font-size: 11px;
   font-weight: 650;
 }
@@ -135,13 +136,13 @@ button {
   height: 8px;
   overflow: hidden;
   border-radius: 999px;
-  background: #e5ebf0;
+  background: #243241;
 }
 
 .progress-fill {
   height: 100%;
   border-radius: inherit;
-  background: #2f855a;
+  background: #3fbf7f;
   transition: width 160ms ease;
 }
 
@@ -157,7 +158,7 @@ button {
 }
 
 .metric strong {
-  color: #1f2933;
+  color: #d9e4ef;
   font-size: 13px;
 }
 
@@ -168,8 +169,8 @@ button {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: #425466;
-  background: #f4f6f8;
+  color: #b9c7d6;
+  background: #182330;
   font-size: 12px;
   line-height: 1.35;
 }
@@ -179,11 +180,11 @@ button {
   height: 7px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: #8a97a5;
+  background: #748397;
 }
 
 .status-ok .status-dot {
-  background: #2f855a;
+  background: #3fbf7f;
 }
 
 .status-cli_not_found .status-dot,
@@ -191,7 +192,7 @@ button {
 .status-timeout .status-dot,
 .status-parse_error .status-dot,
 .status-command_error .status-dot {
-  background: #c2410c;
+  background: #f97316;
 }
 
 .footer-row {
@@ -209,10 +210,10 @@ button {
 .refresh-button {
   height: 30px;
   padding: 0 10px;
-  border: 1px solid #d2dbe3;
+  border: 1px solid #324153;
   border-radius: 7px;
-  color: #223044;
-  background: #ffffff;
+  color: #d8e2ec;
+  background: #16212b;
   display: inline-flex;
   align-items: center;
   gap: 6px;
