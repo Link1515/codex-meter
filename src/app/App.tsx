@@ -12,6 +12,7 @@ import {
   resolveWeeklyLimit,
   snapshotMessage
 } from "../features/usage/format";
+import { subscribeWindowActivity } from "../features/window/activity";
 import { getAlwaysOnTop, getWindowPlacement, restoreWindowPlacement, setAlwaysOnTop } from "../features/window/api";
 import { loadPinState, loadWindowPlacement, savePinState, saveWindowPlacement } from "../features/window/storage";
 import type { WindowPinState } from "../features/window/types";
@@ -24,8 +25,10 @@ function App() {
   });
   const [pinState, setPinState] = useState<WindowPinState>(loadPinState);
   const [pinBusy, setPinBusy] = useState(false);
+  const [isWindowActive, setWindowActive] = useState(false);
   const didRefreshOnStartup = useRef(false);
   const isFetchingUsage = useRef(false);
+  const previousWindowActive = useRef<boolean | undefined>(undefined);
   const snapshotRef = useRef(usageState.snapshot);
 
   const snapshot = usageState.snapshot;
@@ -96,6 +99,27 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    let disposed = false;
+
+    void subscribeWindowActivity(({ isActive }) => {
+      setWindowActive(isActive);
+    }).then((nextUnsubscribe) => {
+      if (disposed) {
+        nextUnsubscribe();
+        return;
+      }
+
+      unsubscribe = nextUnsubscribe;
+    });
+
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
     if (didRefreshOnStartup.current) {
       return;
     }
@@ -105,13 +129,30 @@ function App() {
   }, [refreshUsage]);
 
   useEffect(() => {
+    const wasWindowActive = previousWindowActive.current;
+    previousWindowActive.current = isWindowActive;
+
+    if (!isWindowActive) {
+      return;
+    }
+
+    if (wasWindowActive === false) {
+      void refreshUsage();
+    }
+  }, [isWindowActive, refreshUsage]);
+
+  useEffect(() => {
+    if (!isWindowActive) {
+      return;
+    }
+
     const intervalSeconds = Math.max(30, config.pollIntervalSeconds);
     const intervalId = window.setInterval(() => {
       void refreshUsage();
     }, intervalSeconds * 1000);
 
     return () => window.clearInterval(intervalId);
-  }, [config.pollIntervalSeconds, refreshUsage]);
+  }, [config.pollIntervalSeconds, isWindowActive, refreshUsage]);
 
   const saveCurrentPlacement = useCallback(() => {
     void getWindowPlacement()
