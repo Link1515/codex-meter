@@ -14,9 +14,9 @@
 
 body {
   margin: 0;
-  min-width: 330px;
-  min-height: 300px;
-  background: #0c1117;
+  min-width: 300px;
+  min-height: 255px;
+  background: #101820;
 }
 
 button {
@@ -26,17 +26,14 @@ button {
 .app-shell {
   width: 100vw;
   min-height: 100vh;
-  padding: 12px;
+  padding: 16px;
   background: #101820;
-  border: 1px solid #263241;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
 }
 
 .window-header,
-.footer-row,
-.usage-topline,
 .usage-grid,
 .window-actions {
   display: flex;
@@ -46,6 +43,7 @@ button {
 .window-header {
   justify-content: space-between;
   gap: 10px;
+  min-height: 30px;
 }
 
 .drag-region {
@@ -56,87 +54,86 @@ button {
 }
 
 .title-stack {
-  display: grid;
-  gap: 1px;
+  display: flex;
+  align-items: center;
 }
 
 .app-title {
   color: #f4f7fb;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
 }
 
-.app-subtitle,
 .metric-label,
-.metric span,
-.command-preview {
+.metric span {
   color: #93a4b7;
   font-size: 11px;
 }
 
 .window-actions {
-  gap: 6px;
+  gap: 4px;
 }
 
 .icon-button {
   width: 30px;
   height: 30px;
-  border: 1px solid #324153;
+  border: 1px solid transparent;
   border-radius: 7px;
   color: #b7c3d0;
-  background: #16212b;
+  background: transparent;
   display: inline-grid;
   place-items: center;
 }
 
-.icon-button:hover,
-.refresh-button:hover {
-  background: #1c2a37;
+.icon-button:hover {
+  color: #e5edf5;
+  background: #182330;
 }
 
 .icon-button-active {
   color: #7dd3a8;
-  border-color: #2f8f62;
-  background: #123525;
+  background: #143224;
 }
 
 .usage-panel {
-  padding: 14px;
-  border: 1px solid #2a3747;
-  border-radius: 8px;
-  background: #131d27;
+  padding: 4px 0 0;
   display: grid;
-  gap: 12px;
+  gap: 0;
 }
 
-.usage-topline {
+.limit-meter {
+  padding: 0 0 16px;
+  border-bottom: 1px solid #243241;
+  display: grid;
+  gap: 11px;
+}
+
+.limit-meter + .limit-meter {
+  padding-top: 16px;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.limit-heading {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
-}
-
-.metric-value {
-  margin-top: 1px;
-  color: #f8fafc;
-  font-size: 40px;
-  line-height: 1;
-  font-weight: 750;
-}
-
-.pin-badge {
-  padding: 3px 7px;
-  border: 1px solid #2f8f62;
-  border-radius: 999px;
-  color: #7dd3a8;
-  background: #123525;
+  color: #93a4b7;
   font-size: 11px;
-  font-weight: 650;
+}
+
+.limit-heading strong {
+  color: #e8eef5;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .progress-track {
-  height: 8px;
+  height: 7px;
   overflow: hidden;
   border-radius: 999px;
-  background: #243241;
+  background: #1b2733;
 }
 
 .progress-fill {
@@ -153,24 +150,28 @@ button {
 
 .metric {
   min-width: 0;
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .metric strong {
   color: #d9e4ef;
   font-size: 13px;
+  text-align: right;
 }
 
 .status-line {
   min-height: 22px;
-  padding: 6px 8px;
-  border-radius: 7px;
+  margin-top: 12px;
+  padding: 0 0 0 8px;
+  border-left: 2px solid #f97316;
   display: flex;
   align-items: center;
   gap: 7px;
   color: #b9c7d6;
-  background: #182330;
+  background: transparent;
   font-size: 12px;
   line-height: 1.35;
 }
@@ -195,34 +196,7 @@ button {
   background: #f97316;
 }
 
-.footer-row {
-  margin-top: auto;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.command-preview {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.refresh-button {
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid #324153;
-  border-radius: 7px;
-  color: #d8e2ec;
-  background: #16212b;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.icon-button:disabled,
-.refresh-button:disabled {
+.icon-button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }

@@ -5,7 +5,13 @@ import { PinButton } from "../components/PinButton";
 import { fetchUsage } from "../features/usage/api";
 import { loadUsageConfig, loadCachedSnapshot, saveCachedSnapshot } from "../features/usage/storage";
 import type { CodexUsageSnapshot, UsageViewState } from "../features/usage/types";
-import { commandPreview, formatPercent, formatTimestamp, snapshotMessage, statusLabel } from "../features/usage/format";
+import {
+  formatPercent,
+  formatResetTimestamp,
+  resolveFiveHourLimit,
+  resolveWeeklyLimit,
+  snapshotMessage
+} from "../features/usage/format";
 import { setAlwaysOnTop } from "../features/window/api";
 import { loadPinState, savePinState } from "../features/window/storage";
 import type { WindowPinState } from "../features/window/types";
@@ -21,12 +27,8 @@ function App() {
   const didRefreshOnStartup = useRef(false);
 
   const snapshot = usageState.snapshot;
-  const remainingPercent = snapshot.remainingPercent ?? 0;
-  const usedPercent = snapshot.usagePercent ?? (snapshot.remainingPercent ? 100 - snapshot.remainingPercent : 0);
-  const progressStyle = useMemo(
-    () => ({ width: `${Math.max(0, Math.min(100, remainingPercent))}%` }),
-    [remainingPercent]
-  );
+  const fiveHourLimit = resolveFiveHourLimit(snapshot);
+  const weeklyLimit = resolveWeeklyLimit(snapshot);
 
   useEffect(() => {
     void setAlwaysOnTop(pinState.isPinned).catch(() => {
@@ -88,10 +90,19 @@ function App() {
         <DragRegion>
           <div className="title-stack">
             <span className="app-title">Codex Meter</span>
-            <span className="app-subtitle">{statusLabel(snapshot.status)}</span>
           </div>
         </DragRegion>
         <div className="window-actions">
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Refresh usage"
+            title="Refresh usage"
+            disabled={usageState.kind === "loading"}
+            onClick={() => void refreshUsage()}
+          >
+            <RefreshCw className={usageState.kind === "loading" ? "spin" : ""} size={16} aria-hidden="true" />
+          </button>
           <button className="icon-button" type="button" aria-label="Settings" title="Settings">
             <Settings size={16} aria-hidden="true" />
           </button>
@@ -100,41 +111,16 @@ function App() {
       </header>
 
       <section className="usage-panel" aria-label="Codex usage">
-        <div className="usage-topline">
-          <div>
-            <div className="metric-label">Remaining</div>
-            <div className="metric-value">{formatPercent(snapshot.remainingPercent)}</div>
+        <LimitMeter label="5 hour" limit={fiveHourLimit} />
+        <LimitMeter label="Weekly" limit={weeklyLimit} />
+
+        {snapshot.status === "ok" ? null : (
+          <div className={`status-line status-${snapshot.status}`}>
+            <span className="status-dot" />
+            <span>{snapshotMessage(snapshot)}</span>
           </div>
-          {pinState.isPinned ? <span className="pin-badge">Pinned</span> : null}
-        </div>
-
-        <div className="progress-track" aria-label={`${formatPercent(snapshot.remainingPercent)} remaining`}>
-          <div className="progress-fill" style={progressStyle} />
-        </div>
-
-        <div className="usage-grid">
-          <Metric label="Used" value={formatPercent(usedPercent)} />
-          <Metric label="Updated" value={formatTimestamp(snapshot.fetchedAt)} />
-        </div>
-
-        <div className={`status-line status-${snapshot.status}`}>
-          <span className="status-dot" />
-          <span>{snapshotMessage(snapshot)}</span>
-        </div>
+        )}
       </section>
-
-      <footer className="footer-row">
-        <span className="command-preview">{commandPreview(config)}</span>
-        <button
-          className="refresh-button"
-          type="button"
-          disabled={usageState.kind === "loading"}
-          onClick={() => void refreshUsage()}
-        >
-          <RefreshCw className={usageState.kind === "loading" ? "spin" : ""} size={15} aria-hidden="true" />
-          Refresh
-        </button>
-      </footer>
     </main>
   );
 }
@@ -149,6 +135,36 @@ function Metric({ label, value }: MetricProps) {
     <div className="metric">
       <span>{label}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+type LimitMeterProps = {
+  label: string;
+  limit: {
+    usagePercent?: number;
+    remainingPercent?: number;
+    resetAt?: string;
+  };
+};
+
+function LimitMeter({ label, limit }: LimitMeterProps) {
+  const remainingPercent = limit.remainingPercent ?? 0;
+  const progressStyle = useMemo(
+    () => ({ width: `${Math.max(0, Math.min(100, remainingPercent))}%` }),
+    [remainingPercent]
+  );
+
+  return (
+    <div className="limit-meter">
+      <div className="limit-heading">
+        <span>{label}</span>
+        <strong>{formatPercent(limit.remainingPercent)} left</strong>
+      </div>
+      <div className="progress-track" aria-label={`${label} ${formatPercent(limit.remainingPercent)} remaining`}>
+        <div className="progress-fill" style={progressStyle} />
+      </div>
+      <Metric label="Reset" value={formatResetTimestamp(limit.resetAt)} />
     </div>
   );
 }

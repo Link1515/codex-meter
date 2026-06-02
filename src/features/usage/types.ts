@@ -21,6 +21,8 @@ export type CodexUsageSnapshot = {
   source: "codex-cli";
   fetchedAt: string;
   rawOutput?: string;
+  fiveHourUsageLimit?: UsageLimitSnapshot;
+  weeklyUsageLimit?: UsageLimitSnapshot;
   usagePercent?: number;
   remainingPercent?: number;
   usedTokens?: number;
@@ -32,6 +34,12 @@ export type CodexUsageSnapshot = {
   model?: string;
   status: UsageStatus;
   errorMessage?: string;
+};
+
+export type UsageLimitSnapshot = {
+  usagePercent?: number;
+  remainingPercent?: number;
+  resetAt?: string;
 };
 
 export type UsageViewState =

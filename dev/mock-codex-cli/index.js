@@ -17,6 +17,16 @@ if (mode === "json") {
     model: "gpt-5-codex",
     usagePercent: 28,
     remainingPercent: 72,
+    fiveHourUsageLimit: {
+      usagePercent: 28,
+      remainingPercent: 72,
+      resetAt: "2026-01-01T18:00:00+08:00"
+    },
+    weeklyUsageLimit: {
+      usagePercent: 45,
+      remainingPercent: 55,
+      resetAt: "2026-01-04T00:00:00+08:00"
+    },
     windowResetAt: "2026-01-01T18:00:00+08:00",
     weeklyResetAt: "2026-01-04T00:00:00+08:00"
   }));
@@ -25,7 +35,9 @@ if (mode === "json") {
 
 console.log(`Codex usage
 Model: gpt-5-codex
-Usage: 28%
-Remaining: 72%
-Window resets at: 2026-01-01T18:00:00+08:00
+5 hour usage limit: 28%
+5 hour remaining: 72%
+5 hour resets at: 2026-01-01T18:00:00+08:00
+Weekly usage limit: 45%
+Weekly remaining: 55%
 Weekly resets at: 2026-01-04T00:00:00+08:00`);

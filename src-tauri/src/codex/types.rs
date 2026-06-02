@@ -36,6 +36,8 @@ pub struct CodexUsageSnapshot {
     pub source: String,
     pub fetched_at: String,
     pub raw_output: Option<String>,
+    pub five_hour_usage_limit: Option<UsageLimitSnapshot>,
+    pub weekly_usage_limit: Option<UsageLimitSnapshot>,
     pub usage_percent: Option<f64>,
     pub remaining_percent: Option<f64>,
     pub used_tokens: Option<u64>,
@@ -49,12 +51,22 @@ pub struct CodexUsageSnapshot {
     pub error_message: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageLimitSnapshot {
+    pub usage_percent: Option<f64>,
+    pub remaining_percent: Option<f64>,
+    pub reset_at: Option<String>,
+}
+
 impl CodexUsageSnapshot {
     pub fn with_status(status: UsageStatus, message: Option<String>) -> Self {
         Self {
             source: "codex-cli".to_string(),
             fetched_at: current_timestamp(),
             raw_output: None,
+            five_hour_usage_limit: None,
+            weekly_usage_limit: None,
             usage_percent: None,
             remaining_percent: None,
             used_tokens: None,

@@ -10,7 +10,9 @@ use std::{
 
 use crate::codex::{
     parser::parser_for,
-    types::{current_timestamp, CliUsageConfig, CodexUsageSnapshot, UsageStatus},
+    types::{
+        current_timestamp, CliUsageConfig, CodexUsageSnapshot, UsageLimitSnapshot, UsageStatus,
+    },
 };
 
 pub const DEV_MOCK_COMMAND_ALIAS: &str = "__codex_meter_mock__";
@@ -295,11 +297,12 @@ fn snapshot_from_rate_limits(
     snapshot.usage_percent = Some(primary.used_percent.clamp(0.0, 100.0));
     snapshot.remaining_percent = snapshot.usage_percent.map(|used| (100.0 - used).max(0.0));
     snapshot.window_reset_at = primary.resets_at.map(|value| value.to_string());
-    snapshot.weekly_reset_at = response
-        .rate_limits
-        .secondary
-        .and_then(|window| window.resets_at)
-        .map(|value| value.to_string());
+    snapshot.five_hour_usage_limit = Some(limit_from_rpc_window(primary));
+    let secondary = response.rate_limits.secondary.map(limit_from_rpc_window);
+    snapshot.weekly_reset_at = secondary
+        .as_ref()
+        .and_then(|window| window.reset_at.clone());
+    snapshot.weekly_usage_limit = secondary;
     snapshot.account_plan = response.rate_limits.plan_type.or_else(|| {
         account
             .and_then(|value| value.account)
@@ -307,6 +310,16 @@ fn snapshot_from_rate_limits(
     });
 
     Ok(snapshot)
+}
+
+fn limit_from_rpc_window(window: RpcRateLimitWindow) -> UsageLimitSnapshot {
+    let usage_percent = window.used_percent.clamp(0.0, 100.0);
+
+    UsageLimitSnapshot {
+        usage_percent: Some(usage_percent),
+        remaining_percent: Some((100.0 - usage_percent).max(0.0)),
+        reset_at: window.resets_at.map(|value| value.to_string()),
+    }
 }
 
 pub fn run_command(config: &CliUsageConfig) -> io::Result<CommandRunResult> {
