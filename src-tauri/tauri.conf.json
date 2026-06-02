@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Codex Meter",
+  "version": "0.1.0",
+  "identifier": "dev.codex-meter.app",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm typecheck",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Codex Meter",
+        "width": 360,
+        "height": 240,
+        "minWidth": 320,
+        "minHeight": 220,
+        "resizable": true,
+        "decorations": false,
+        "transparent": false,
+        "alwaysOnTop": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}
