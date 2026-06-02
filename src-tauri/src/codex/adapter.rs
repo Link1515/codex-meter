@@ -8,6 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use crate::codex::{
     parser::parser_for,
     types::{
@@ -16,6 +19,9 @@ use crate::codex::{
 };
 
 pub const DEV_MOCK_COMMAND_ALIAS: &str = "__codex_meter_mock__";
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug)]
 pub struct CommandRunResult {
@@ -83,8 +89,8 @@ fn is_app_server_rpc_config(config: &CliUsageConfig) -> bool {
 fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageSnapshot> {
     let timeout = Duration::from_secs(config.timeout_seconds.max(1));
     let command_spec = command_spec(config)?;
-    let mut child = Command::new(&command_spec.program)
-        .args(command_spec.args.iter().map(String::as_str))
+    let mut command = command_from_spec(&command_spec);
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -325,8 +331,8 @@ fn limit_from_rpc_window(window: RpcRateLimitWindow) -> UsageLimitSnapshot {
 pub fn run_command(config: &CliUsageConfig) -> io::Result<CommandRunResult> {
     let timeout = Duration::from_secs(config.timeout_seconds.max(1));
     let command_spec = command_spec(config)?;
-    let mut child = Command::new(&command_spec.program)
-        .args(command_spec.args.iter().map(String::as_str))
+    let mut command = command_from_spec(&command_spec);
+    let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
@@ -381,6 +387,16 @@ fn join_process_output(
 struct CommandSpec {
     program: String,
     args: Vec<String>,
+}
+
+fn command_from_spec(command_spec: &CommandSpec) -> Command {
+    let mut command = Command::new(&command_spec.program);
+    command.args(command_spec.args.iter().map(String::as_str));
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    command
 }
 
 fn command_spec(config: &CliUsageConfig) -> io::Result<CommandSpec> {
