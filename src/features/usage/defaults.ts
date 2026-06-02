@@ -2,7 +2,15 @@ import type { CliUsageConfig, CodexUsageSnapshot } from "./types";
 
 export const devMockCommandAlias = "__codex_meter_mock__";
 
-export const legacyDefaultUsageConfig: CliUsageConfig = {
+export const defaultUsageConfig: CliUsageConfig = {
+  codexCommand: "codex",
+  usageArgs: ["-s", "read-only", "-a", "untrusted", "app-server"],
+  pollIntervalSeconds: 60,
+  timeoutSeconds: 10,
+  parserMode: "Json"
+};
+
+export const legacyStatusUsageConfig: CliUsageConfig = {
   codexCommand: "codex",
   usageArgs: ["status"],
   pollIntervalSeconds: 60,
@@ -10,16 +18,12 @@ export const legacyDefaultUsageConfig: CliUsageConfig = {
   parserMode: "Text"
 };
 
-const devMockUsageConfig: CliUsageConfig = {
+export const devMockUsageConfig: CliUsageConfig = {
   codexCommand: devMockCommandAlias,
   usageArgs: [],
   pollIntervalSeconds: 60,
   timeoutSeconds: 10,
   parserMode: "Text"
-};
-
-export const defaultUsageConfig: CliUsageConfig = {
-  ...(import.meta.env.DEV ? devMockUsageConfig : legacyDefaultUsageConfig)
 };
 
 export const emptySnapshot: CodexUsageSnapshot = {

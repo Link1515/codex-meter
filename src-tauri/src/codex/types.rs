@@ -12,7 +12,9 @@ pub struct CliUsageConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ParserMode {
+    #[serde(alias = "Json")]
     Json,
+    #[serde(alias = "Text")]
     Text,
 }
 
@@ -74,5 +76,22 @@ pub fn current_timestamp() -> String {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => format!("{}", duration.as_secs()),
         Err(_) => "0".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ParserMode;
+
+    #[test]
+    fn deserializes_frontend_parser_mode_names() {
+        assert!(matches!(
+            serde_json::from_str::<ParserMode>(r#""Json""#).unwrap(),
+            ParserMode::Json
+        ));
+        assert!(matches!(
+            serde_json::from_str::<ParserMode>(r#""Text""#).unwrap(),
+            ParserMode::Text
+        ));
     }
 }

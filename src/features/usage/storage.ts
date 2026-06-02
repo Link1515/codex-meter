@@ -1,4 +1,4 @@
-import { defaultUsageConfig, emptySnapshot, legacyDefaultUsageConfig } from "./defaults";
+import { defaultUsageConfig, devMockUsageConfig, emptySnapshot, legacyStatusUsageConfig } from "./defaults";
 import type { CliUsageConfig, CodexUsageSnapshot } from "./types";
 
 const configKey = "codex-meter:usage-config";
@@ -18,7 +18,7 @@ export function loadUsageConfig(): CliUsageConfig {
       usageArgs: Array.isArray(parsed.usageArgs) ? parsed.usageArgs : defaultUsageConfig.usageArgs
     };
 
-    if (import.meta.env.DEV && isLegacyDefaultUsageConfig(config)) {
+    if (isLegacyUsageConfig(config) || (import.meta.env.DEV && isDevMockUsageConfig(config))) {
       return defaultUsageConfig;
     }
 
@@ -49,12 +49,20 @@ export function saveCachedSnapshot(snapshot: CodexUsageSnapshot): void {
   localStorage.setItem(snapshotKey, JSON.stringify(snapshot));
 }
 
-function isLegacyDefaultUsageConfig(config: CliUsageConfig): boolean {
+function isDevMockUsageConfig(config: CliUsageConfig): boolean {
+  return sameCommandConfig(config, devMockUsageConfig);
+}
+
+function isLegacyUsageConfig(config: CliUsageConfig): boolean {
+  return sameCommandConfig(config, legacyStatusUsageConfig);
+}
+
+function sameCommandConfig(config: CliUsageConfig, expected: CliUsageConfig): boolean {
   return (
-    config.codexCommand === legacyDefaultUsageConfig.codexCommand &&
-    config.timeoutSeconds === legacyDefaultUsageConfig.timeoutSeconds &&
-    config.parserMode === legacyDefaultUsageConfig.parserMode &&
-    config.usageArgs.length === legacyDefaultUsageConfig.usageArgs.length &&
-    config.usageArgs.every((arg, index) => arg === legacyDefaultUsageConfig.usageArgs[index])
+    config.codexCommand === expected.codexCommand &&
+    config.timeoutSeconds === expected.timeoutSeconds &&
+    config.parserMode === expected.parserMode &&
+    config.usageArgs.length === expected.usageArgs.length &&
+    config.usageArgs.every((arg, index) => arg === expected.usageArgs[index])
   );
 }
