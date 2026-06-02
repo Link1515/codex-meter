@@ -3,9 +3,10 @@ import { startDragging } from "../features/window/api";
 
 type DragRegionProps = {
   children: ReactNode;
+  onDragComplete?: () => void;
 };
 
-export function DragRegion({ children }: DragRegionProps) {
+export function DragRegion({ children, onDragComplete }: DragRegionProps) {
   return (
     <div
       className="drag-region"
@@ -14,7 +15,9 @@ export function DragRegion({ children }: DragRegionProps) {
           return;
         }
 
-        void startDragging();
+        void startDragging().finally(() => {
+          window.setTimeout(() => onDragComplete?.(), 250);
+        });
       }}
     >
       {children}

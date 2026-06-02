@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadUsageConfig } from "../../src/features/usage/storage";
+import { loadUsageConfig, saveCachedSnapshot } from "../../src/features/usage/storage";
 
 describe("usage config storage", () => {
   it("defaults to the Codex app-server RPC command", () => {
@@ -32,6 +32,26 @@ describe("usage config storage", () => {
       codexCommand: "codex",
       usageArgs: ["-s", "read-only", "-a", "untrusted", "app-server"]
     });
+
+    vi.unstubAllGlobals();
+  });
+
+  it("does not persist raw CLI output in cached snapshots", () => {
+    const storage = {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn()
+    };
+    vi.stubGlobal("localStorage", storage);
+
+    saveCachedSnapshot({
+      source: "codex-cli",
+      fetchedAt: "0",
+      status: "ok",
+      rawOutput: "token: secret"
+    });
+
+    const [, serialized] = storage.setItem.mock.calls[0];
+    expect(JSON.parse(serialized)).not.toHaveProperty("rawOutput");
 
     vi.unstubAllGlobals();
   });

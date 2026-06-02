@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::window::types::WindowPlacementState;
 
 #[derive(Debug, Clone, Copy)]

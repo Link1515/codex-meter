@@ -1,13 +1,4 @@
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WindowPinState {
-    pub is_pinned: bool,
-    pub updated_at: String,
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

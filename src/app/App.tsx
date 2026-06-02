@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DragRegion } from "../components/DragRegion";
 import { PinButton } from "../components/PinButton";
 import { fetchUsage } from "../features/usage/api";
@@ -12,8 +12,8 @@ import {
   resolveWeeklyLimit,
   snapshotMessage
 } from "../features/usage/format";
-import { setAlwaysOnTop } from "../features/window/api";
-import { loadPinState, savePinState } from "../features/window/storage";
+import { getAlwaysOnTop, getWindowPlacement, restoreWindowPlacement, setAlwaysOnTop } from "../features/window/api";
+import { loadPinState, loadWindowPlacement, savePinState, saveWindowPlacement } from "../features/window/storage";
 import type { WindowPinState } from "../features/window/types";
 
 function App() {
@@ -25,32 +25,25 @@ function App() {
   const [pinState, setPinState] = useState<WindowPinState>(loadPinState);
   const [pinBusy, setPinBusy] = useState(false);
   const didRefreshOnStartup = useRef(false);
+  const isFetchingUsage = useRef(false);
+  const snapshotRef = useRef(usageState.snapshot);
 
   const snapshot = usageState.snapshot;
   const fiveHourLimit = resolveFiveHourLimit(snapshot);
   const weeklyLimit = resolveWeeklyLimit(snapshot);
 
   useEffect(() => {
-    void setAlwaysOnTop(pinState.isPinned).catch(() => {
-      // Window control failure must not block usage querying.
-    });
-  }, []);
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
-  useEffect(() => {
-    if (didRefreshOnStartup.current) {
+  const refreshUsage = useCallback(async (): Promise<void> => {
+    if (isFetchingUsage.current) {
       return;
     }
 
-    didRefreshOnStartup.current = true;
-    void refreshUsage();
-  }, []);
-
-  async function refreshUsage(): Promise<void> {
-    if (usageState.kind === "loading") {
-      return;
-    }
-
-    setUsageState({ kind: "loading", snapshot });
+    const currentSnapshot = snapshotRef.current;
+    isFetchingUsage.current = true;
+    setUsageState({ kind: "loading", snapshot: currentSnapshot });
 
     try {
       const nextSnapshot = await fetchUsage(config);
@@ -61,14 +54,72 @@ function App() {
       });
     } catch (error) {
       const fallback: CodexUsageSnapshot = {
-        ...snapshot,
+        ...currentSnapshot,
         source: "codex-cli",
         status: "command_error",
         errorMessage: error instanceof Error ? error.message : "Unable to fetch Codex usage"
       };
       setUsageState({ kind: "failed", snapshot: fallback });
+    } finally {
+      isFetchingUsage.current = false;
     }
-  }
+  }, [config]);
+
+  useEffect(() => {
+    void setAlwaysOnTop(pinState.isPinned)
+      .then(() => getAlwaysOnTop())
+      .then((isPinned) => {
+        if (isPinned === pinState.isPinned) {
+          return;
+        }
+
+        const nextState = { isPinned, updatedAt: new Date().toISOString() };
+        savePinState(nextState);
+        setPinState(nextState);
+      })
+      .catch(() => {
+        // Window control failure must not block usage querying.
+      });
+  }, []);
+
+  useEffect(() => {
+    const placement = loadWindowPlacement();
+    if (!placement) {
+      return;
+    }
+
+    void restoreWindowPlacement(placement)
+      .then(saveWindowPlacement)
+      .catch(() => {
+        // Window placement failure must not block usage querying.
+      });
+  }, []);
+
+  useEffect(() => {
+    if (didRefreshOnStartup.current) {
+      return;
+    }
+
+    didRefreshOnStartup.current = true;
+    void refreshUsage();
+  }, [refreshUsage]);
+
+  useEffect(() => {
+    const intervalSeconds = Math.max(30, config.pollIntervalSeconds);
+    const intervalId = window.setInterval(() => {
+      void refreshUsage();
+    }, intervalSeconds * 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [config.pollIntervalSeconds, refreshUsage]);
+
+  const saveCurrentPlacement = useCallback(() => {
+    void getWindowPlacement()
+      .then(saveWindowPlacement)
+      .catch(() => {
+        // Drag placement persistence is best effort.
+      });
+  }, []);
 
   async function togglePinned(): Promise<void> {
     const nextPinned = !pinState.isPinned;
@@ -87,7 +138,7 @@ function App() {
   return (
     <main className="app-shell">
       <header className="window-header">
-        <DragRegion>
+        <DragRegion onDragComplete={saveCurrentPlacement}>
           <div className="title-stack">
             <span className="app-title">Codex Meter</span>
           </div>

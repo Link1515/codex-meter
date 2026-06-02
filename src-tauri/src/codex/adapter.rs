@@ -1,6 +1,6 @@
 use std::{
     env,
-    io::{self, BufRead, BufReader, Write},
+    io::{self, BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::mpsc,
@@ -330,26 +330,52 @@ pub fn run_command(config: &CliUsageConfig) -> io::Result<CommandRunResult> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "command stdout unavailable"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "command stderr unavailable"))?;
+    let stdout_reader = thread::spawn(move || read_process_output(stdout));
+    let stderr_reader = thread::spawn(move || read_process_output(stderr));
 
     let started_at = Instant::now();
     loop {
-        if child.try_wait()?.is_some() {
-            let output = child.wait_with_output()?;
+        if let Some(status) = child.try_wait()? {
+            let _ = child.wait();
             return Ok(CommandRunResult {
-                exit_code: output.status.code(),
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                exit_code: status.code(),
+                stdout: join_process_output(stdout_reader)?,
+                stderr: join_process_output(stderr_reader)?,
             });
         }
 
         if started_at.elapsed() >= timeout {
             let _ = child.kill();
             let _ = child.wait();
+            let _ = join_process_output(stdout_reader);
+            let _ = join_process_output(stderr_reader);
             return Err(io::Error::new(io::ErrorKind::TimedOut, "command timed out"));
         }
 
         thread::sleep(Duration::from_millis(25));
     }
+}
+
+fn read_process_output(mut reader: impl Read) -> io::Result<String> {
+    let mut output = Vec::new();
+    reader.read_to_end(&mut output)?;
+    Ok(String::from_utf8_lossy(&output).to_string())
+}
+
+fn join_process_output(
+    reader: thread::JoinHandle<io::Result<String>>,
+) -> io::Result<String> {
+    reader
+        .join()
+        .map_err(|_| io::Error::new(io::ErrorKind::Other, "command output reader panicked"))?
 }
 
 struct CommandSpec {

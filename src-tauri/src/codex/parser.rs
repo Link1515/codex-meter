@@ -33,7 +33,6 @@ impl UsageParser for TextUsageParser {
         }
 
         let mut snapshot = CodexUsageSnapshot::with_status(UsageStatus::Ok, None);
-        snapshot.raw_output = Some(trimmed.to_string());
         let mut five_hour_limit = UsageLimitSnapshot {
             usage_percent: None,
             remaining_percent: None,
@@ -143,7 +142,6 @@ impl UsageParser for JsonUsageParser {
         };
 
         let mut snapshot = CodexUsageSnapshot::with_status(UsageStatus::Ok, None);
-        snapshot.raw_output = Some(trimmed.to_string());
         snapshot.five_hour_usage_limit = limit_field(
             &value,
             &[

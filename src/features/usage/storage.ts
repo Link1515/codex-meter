@@ -46,7 +46,8 @@ export function loadCachedSnapshot(): CodexUsageSnapshot {
 }
 
 export function saveCachedSnapshot(snapshot: CodexUsageSnapshot): void {
-  localStorage.setItem(snapshotKey, JSON.stringify(snapshot));
+  const { rawOutput: _rawOutput, ...cacheableSnapshot } = snapshot;
+  localStorage.setItem(snapshotKey, JSON.stringify(cacheableSnapshot));
 }
 
 function isDevMockUsageConfig(config: CliUsageConfig): boolean {
