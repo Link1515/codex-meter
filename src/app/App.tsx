@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DragRegion } from "../components/DragRegion";
 import { PinButton } from "../components/PinButton";
@@ -12,6 +12,7 @@ import {
   resolveWeeklyLimit,
   snapshotMessage
 } from "../features/usage/format";
+import { canStartManualRefresh } from "../features/usage/refresh";
 import { getAlwaysOnTop, getWindowPlacement, restoreWindowPlacement, setAlwaysOnTop } from "../features/window/api";
 import { loadPinState, loadWindowPlacement, savePinState, saveWindowPlacement } from "../features/window/storage";
 import type { WindowPinState } from "../features/window/types";
@@ -27,6 +28,7 @@ function App() {
   const [refreshScheduleKey, setRefreshScheduleKey] = useState(0);
   const didRefreshOnStartup = useRef(false);
   const isFetchingUsage = useRef(false);
+  const lastManualRefreshAt = useRef(0);
   const snapshotRef = useRef(usageState.snapshot);
 
   const snapshot = usageState.snapshot;
@@ -67,6 +69,12 @@ function App() {
   }, [config]);
 
   const refreshUsageManually = useCallback((): void => {
+    const now = Date.now();
+    if (!canStartManualRefresh(now, lastManualRefreshAt.current)) {
+      return;
+    }
+
+    lastManualRefreshAt.current = now;
     setRefreshScheduleKey((currentKey) => currentKey + 1);
     void refreshUsage();
   }, [refreshUsage]);
@@ -159,6 +167,17 @@ function App() {
             <RefreshCw className={usageState.kind === "loading" ? "spin" : ""} size={16} aria-hidden="true" />
           </button>
           <PinButton isPinned={pinState.isPinned} isBusy={pinBusy} onToggle={() => void togglePinned()} />
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Settings"
+            title="Settings"
+            onClick={() => {
+              window.location.hash = "settings";
+            }}
+          >
+            <Settings size={16} aria-hidden="true" />
+          </button>
         </div>
       </header>
 

@@ -1,5 +1,7 @@
 use crate::codex::{
-    adapter::{fetch_codex_usage, run_command, sanitize_message, summary_text},
+    adapter::{
+        fetch_codex_usage, is_app_server_rpc_config, run_command, sanitize_message, summary_text,
+    },
     errors::AppError,
     parser::parser_for,
     types::{CliUsageConfig, CodexUsageSnapshot},
@@ -23,6 +25,25 @@ pub fn fetch_usage(config: CliUsageConfig) -> Result<CodexUsageSnapshot, AppErro
 #[tauri::command]
 pub fn test_cli_command(config: CliUsageConfig) -> Result<CliTestResult, AppError> {
     validate_config(&config)?;
+
+    if is_app_server_rpc_config(&config) {
+        let parser_result = fetch_codex_usage(&config);
+        let stdout_summary = if parser_result.status == crate::codex::types::UsageStatus::Ok {
+            "Codex app-server RPC returned usage data".to_string()
+        } else {
+            parser_result
+                .error_message
+                .clone()
+                .unwrap_or_else(|| "Codex app-server RPC did not return usage data".to_string())
+        };
+
+        return Ok(CliTestResult {
+            exit_code: None,
+            stdout_summary: sanitize_message(&stdout_summary),
+            stderr_summary: "No stderr captured from RPC probe".to_string(),
+            parser_result,
+        });
+    }
 
     match run_command(&config) {
         Ok(result) => {

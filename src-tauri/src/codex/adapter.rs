@@ -79,7 +79,7 @@ fn is_authentication_error(message: &str) -> bool {
         || lower.contains("please log in")
 }
 
-fn is_app_server_rpc_config(config: &CliUsageConfig) -> bool {
+pub(crate) fn is_app_server_rpc_config(config: &CliUsageConfig) -> bool {
     config
         .usage_args
         .iter()
@@ -88,6 +88,7 @@ fn is_app_server_rpc_config(config: &CliUsageConfig) -> bool {
 
 fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageSnapshot> {
     let timeout = Duration::from_secs(config.timeout_seconds.max(1));
+    let started_at = Instant::now();
     let command_spec = command_spec(config)?;
     let mut command = command_from_spec(&command_spec);
     let mut child = command
@@ -134,17 +135,17 @@ fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageS
                 }
             })),
         )?;
-        let _ = read_rpc_response(&line_rx, 1, timeout)?;
+        let _ = read_rpc_response(&line_rx, 1, started_at, timeout)?;
 
         send_rpc_notification(&mut stdin, "initialized")?;
 
-        send_rpc_request(&mut stdin, 2, "account/read", None)?;
-        let account = read_rpc_response(&line_rx, 2, timeout)
+        send_rpc_request(&mut stdin, 2, "account/rateLimits/read", None)?;
+        let rate_limits = read_rpc_response(&line_rx, 2, started_at, timeout)?;
+
+        send_rpc_request(&mut stdin, 3, "account/read", None)?;
+        let account = read_rpc_response(&line_rx, 3, started_at, timeout)
             .ok()
             .and_then(|value| serde_json::from_value::<RpcAccountResult>(value).ok());
-
-        send_rpc_request(&mut stdin, 3, "account/rateLimits/read", None)?;
-        let rate_limits = read_rpc_response(&line_rx, 3, timeout)?;
 
         snapshot_from_rate_limits(rate_limits, account)
     })();
@@ -197,10 +198,9 @@ fn send_rpc_notification(stdin: &mut impl Write, method: &str) -> io::Result<()>
 fn read_rpc_response(
     line_rx: &mpsc::Receiver<String>,
     id: u64,
+    started_at: Instant,
     timeout: Duration,
 ) -> io::Result<serde_json::Value> {
-    let started_at = Instant::now();
-
     loop {
         let remaining = timeout.checked_sub(started_at.elapsed()).ok_or_else(|| {
             io::Error::new(io::ErrorKind::TimedOut, "Codex app-server RPC timed out")
@@ -376,9 +376,7 @@ fn read_process_output(mut reader: impl Read) -> io::Result<String> {
     Ok(String::from_utf8_lossy(&output).to_string())
 }
 
-fn join_process_output(
-    reader: thread::JoinHandle<io::Result<String>>,
-) -> io::Result<String> {
+fn join_process_output(reader: thread::JoinHandle<io::Result<String>>) -> io::Result<String> {
     reader
         .join()
         .map_err(|_| io::Error::new(io::ErrorKind::Other, "command output reader panicked"))?
@@ -579,8 +577,8 @@ pub fn summary_text(primary: &str, fallback: &str) -> String {
     };
     let trimmed = source.trim();
 
-    if trimmed.len() > 240 {
-        format!("{}...", &trimmed[..240])
+    if trimmed.chars().count() > 240 {
+        format!("{}...", trimmed.chars().take(240).collect::<String>())
     } else if trimmed.is_empty() {
         "Codex CLI returned no output".to_string()
     } else {
@@ -610,7 +608,9 @@ pub fn sanitize_message(message: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{fetch_codex_usage, DEV_MOCK_COMMAND_ALIAS};
+    use super::{
+        fetch_codex_usage, is_app_server_rpc_config, summary_text, DEV_MOCK_COMMAND_ALIAS,
+    };
     use crate::codex::types::{CliUsageConfig, ParserMode, UsageStatus};
 
     #[test]
@@ -625,5 +625,30 @@ mod tests {
         assert!(matches!(snapshot.status, UsageStatus::Ok));
         assert_eq!(snapshot.usage_percent, Some(28.0));
         assert_eq!(snapshot.remaining_percent, Some(72.0));
+    }
+
+    #[test]
+    fn truncates_unicode_summary_on_char_boundary() {
+        let message = "錯".repeat(241);
+        let summary = summary_text(&message, "");
+
+        assert!(summary.ends_with("..."));
+        assert_eq!(summary.trim_end_matches("...").chars().count(), 240);
+    }
+
+    #[test]
+    fn detects_app_server_rpc_config() {
+        let config = CliUsageConfig {
+            codex_command: "codex".to_string(),
+            usage_args: vec![
+                "-s".to_string(),
+                "read-only".to_string(),
+                "app-server".to_string(),
+            ],
+            timeout_seconds: 10,
+            parser_mode: ParserMode::Json,
+        };
+
+        assert!(is_app_server_rpc_config(&config));
     }
 }
