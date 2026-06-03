@@ -177,13 +177,11 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <DragRegion className="app-shell" element="main" onDragComplete={saveCurrentPlacement}>
       <header className="window-header">
-        <DragRegion onDragComplete={saveCurrentPlacement}>
-          <div className="title-stack">
-            <span className="app-title">Codex Meter</span>
-          </div>
-        </DragRegion>
+        <div className="title-stack">
+          <span className="app-title">Codex Meter</span>
+        </div>
         <div className="window-actions">
           <button
             className="icon-button"
@@ -210,7 +208,7 @@ function App() {
           </div>
         )}
       </section>
-    </main>
+    </DragRegion>
   );
 }
 

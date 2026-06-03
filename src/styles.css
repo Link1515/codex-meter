@@ -39,6 +39,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  user-select: none;
 }
 
 .window-header,
@@ -55,10 +56,7 @@ button {
 }
 
 .drag-region {
-  flex: 1;
   min-width: 0;
-  cursor: move;
-  user-select: none;
 }
 
 .title-stack {
@@ -91,6 +89,7 @@ button {
   background: transparent;
   display: inline-grid;
   place-items: center;
+  cursor: pointer;
 }
 
 .icon-button:hover {
