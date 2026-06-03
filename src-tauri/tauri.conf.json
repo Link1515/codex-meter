@@ -13,12 +13,12 @@
     "windows": [
       {
         "title": "Codex Meter",
-        "width": 300,
-        "height": 255,
-        "minWidth": 300,
-        "minHeight": 255,
-        "maxWidth": 300,
-        "maxHeight": 255,
+        "width": 280,
+        "height": 232,
+        "minWidth": 280,
+        "minHeight": 232,
+        "maxWidth": 280,
+        "maxHeight": 232,
         "resizable": false,
         "decorations": false,
         "transparent": false,

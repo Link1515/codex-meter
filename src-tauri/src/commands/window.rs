@@ -1,4 +1,4 @@
-use tauri::{Manager, PhysicalPosition, PhysicalSize, Window};
+use tauri::{Manager, PhysicalPosition, Window};
 
 use crate::codex::errors::AppError;
 use crate::window::{
@@ -45,14 +45,19 @@ pub fn restore_window_placement(
     window: Window,
     placement: WindowPlacementState,
 ) -> Result<WindowPlacementState, AppError> {
+    let current_size = window.outer_size().map_err(|error| {
+        AppError::window_control_failed(format!("Unable to read window size: {}", error))
+    })?;
     let bounds = visible_bounds_for_placement(&window, placement.display_id.as_deref())?;
-    let corrected = ensure_visible(&placement, bounds);
+    let corrected = ensure_visible(
+        &WindowPlacementState {
+            width: current_size.width,
+            height: current_size.height,
+            ..placement
+        },
+        bounds,
+    );
 
-    window
-        .set_size(PhysicalSize::new(corrected.width, corrected.height))
-        .map_err(|error| {
-            AppError::window_control_failed(format!("Unable to restore window size: {}", error))
-        })?;
     window
         .set_position(PhysicalPosition::new(corrected.x, corrected.y))
         .map_err(|error| {
