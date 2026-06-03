@@ -1,6 +1,5 @@
 use std::{
-    env,
-    fs,
+    env, fs,
     io::{self, BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -416,11 +415,7 @@ fn snapshot_from_oauth_usage(value: serde_json::Value) -> io::Result<CodexUsageS
     if let Some(rate_limits) = response.rate_limits {
         if snapshot.five_hour_usage_limit.is_none() {
             if let Some(primary) = rate_limits.primary {
-                let usage_percent = primary.used_percent.clamp(0.0, 100.0);
-                snapshot.usage_percent = Some(usage_percent);
-                snapshot.remaining_percent = Some((100.0 - usage_percent).max(0.0));
-                snapshot.window_reset_at = primary.resets_at.map(|value| value.to_string());
-                snapshot.five_hour_usage_limit = Some(limit_from_rpc_window(primary));
+                apply_primary_usage_limit(&mut snapshot, limit_from_rpc_window(primary));
             }
         }
 
@@ -449,26 +444,14 @@ fn snapshot_from_oauth_usage(value: serde_json::Value) -> io::Result<CodexUsageS
 }
 
 fn apply_oauth_primary_window(snapshot: &mut CodexUsageSnapshot, window: OAuthRateLimitWindow) {
-    let usage_percent = window.used_percent.clamp(0.0, 100.0);
-    let reset_at = window.resets_at.map(|value| value.to_string());
-    snapshot.usage_percent = Some(usage_percent);
-    snapshot.remaining_percent = Some((100.0 - usage_percent).max(0.0));
-    snapshot.window_reset_at = reset_at.clone();
-    snapshot.five_hour_usage_limit = Some(UsageLimitSnapshot {
-        usage_percent: Some(usage_percent),
-        remaining_percent: Some((100.0 - usage_percent).max(0.0)),
-        reset_at,
-    });
+    apply_primary_usage_limit(snapshot, limit_from_oauth_window(window));
 }
 
 fn limit_from_oauth_window(window: OAuthRateLimitWindow) -> UsageLimitSnapshot {
-    let usage_percent = window.used_percent.clamp(0.0, 100.0);
-
-    UsageLimitSnapshot {
-        usage_percent: Some(usage_percent),
-        remaining_percent: Some((100.0 - usage_percent).max(0.0)),
-        reset_at: window.resets_at.map(|value| value.to_string()),
-    }
+    UsageLimitSnapshot::from_usage_percent(
+        window.used_percent,
+        window.resets_at.map(|value| value.to_string()),
+    )
 }
 
 fn snapshot_from_rate_limits(
@@ -491,10 +474,7 @@ fn snapshot_from_rate_limits(
 
     let mut snapshot = CodexUsageSnapshot::with_status(UsageStatus::Ok, None);
     snapshot.fetched_at = current_timestamp();
-    snapshot.usage_percent = Some(primary.used_percent.clamp(0.0, 100.0));
-    snapshot.remaining_percent = snapshot.usage_percent.map(|used| (100.0 - used).max(0.0));
-    snapshot.window_reset_at = primary.resets_at.map(|value| value.to_string());
-    snapshot.five_hour_usage_limit = Some(limit_from_rpc_window(primary));
+    apply_primary_usage_limit(&mut snapshot, limit_from_rpc_window(primary));
     let secondary = response.rate_limits.secondary.map(limit_from_rpc_window);
     snapshot.weekly_reset_at = secondary
         .as_ref()
@@ -520,13 +500,23 @@ fn deserialize_rate_limits_result(
 }
 
 fn limit_from_rpc_window(window: RpcRateLimitWindow) -> UsageLimitSnapshot {
-    let usage_percent = window.used_percent.clamp(0.0, 100.0);
+    UsageLimitSnapshot::from_usage_percent(
+        window.used_percent,
+        window.resets_at.map(|value| value.to_string()),
+    )
+}
 
-    UsageLimitSnapshot {
-        usage_percent: Some(usage_percent),
-        remaining_percent: Some((100.0 - usage_percent).max(0.0)),
-        reset_at: window.resets_at.map(|value| value.to_string()),
+fn apply_primary_usage_limit(snapshot: &mut CodexUsageSnapshot, limit: UsageLimitSnapshot) {
+    if let Some(usage_percent) = limit.usage_percent {
+        snapshot.usage_percent = Some(usage_percent);
     }
+
+    if let Some(remaining_percent) = limit.remaining_percent {
+        snapshot.remaining_percent = Some(remaining_percent);
+    }
+
+    snapshot.window_reset_at = limit.reset_at.clone();
+    snapshot.five_hour_usage_limit = Some(limit);
 }
 
 pub fn run_command(config: &CliUsageConfig) -> io::Result<CommandRunResult> {

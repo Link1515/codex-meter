@@ -59,6 +59,49 @@ pub struct UsageLimitSnapshot {
     pub reset_at: Option<String>,
 }
 
+impl UsageLimitSnapshot {
+    pub fn empty() -> Self {
+        Self {
+            usage_percent: None,
+            remaining_percent: None,
+            reset_at: None,
+        }
+    }
+
+    pub fn from_usage_percent(usage_percent: f64, reset_at: Option<String>) -> Self {
+        let usage_percent = usage_percent.clamp(0.0, 100.0);
+
+        Self {
+            usage_percent: Some(usage_percent),
+            remaining_percent: Some((100.0 - usage_percent).max(0.0)),
+            reset_at,
+        }
+    }
+
+    pub fn complete_percentages(&mut self) {
+        self.usage_percent = self.usage_percent.map(clamp_percent);
+        self.remaining_percent = self.remaining_percent.map(clamp_percent);
+
+        if self.remaining_percent.is_none() {
+            self.remaining_percent = self.usage_percent.map(|used| (100.0 - used).max(0.0));
+        }
+
+        if self.usage_percent.is_none() {
+            self.usage_percent = self
+                .remaining_percent
+                .map(|remaining| (100.0 - remaining).max(0.0));
+        }
+    }
+
+    pub fn has_percent(&self) -> bool {
+        self.usage_percent.is_some() || self.remaining_percent.is_some()
+    }
+}
+
+pub fn clamp_percent(value: f64) -> f64 {
+    value.clamp(0.0, 100.0)
+}
+
 impl CodexUsageSnapshot {
     pub fn with_status(status: UsageStatus, message: Option<String>) -> Self {
         Self {

@@ -1,5 +1,6 @@
 use crate::codex::types::{
-    current_timestamp, CodexUsageSnapshot, ParserMode, UsageLimitSnapshot, UsageStatus,
+    clamp_percent, current_timestamp, CodexUsageSnapshot, ParserMode, UsageLimitSnapshot,
+    UsageStatus,
 };
 
 pub trait UsageParser {
@@ -33,16 +34,8 @@ impl UsageParser for TextUsageParser {
         }
 
         let mut snapshot = CodexUsageSnapshot::with_status(UsageStatus::Ok, None);
-        let mut five_hour_limit = UsageLimitSnapshot {
-            usage_percent: None,
-            remaining_percent: None,
-            reset_at: None,
-        };
-        let mut weekly_limit = UsageLimitSnapshot {
-            usage_percent: None,
-            remaining_percent: None,
-            reset_at: None,
-        };
+        let mut five_hour_limit = UsageLimitSnapshot::empty();
+        let mut weekly_limit = UsageLimitSnapshot::empty();
 
         for line in trimmed.lines() {
             let normalized = line.trim();
@@ -77,10 +70,10 @@ impl UsageParser for TextUsageParser {
             }
         }
 
-        complete_limit(&mut five_hour_limit);
-        complete_limit(&mut weekly_limit);
+        five_hour_limit.complete_percentages();
+        weekly_limit.complete_percentages();
 
-        if has_limit_percent(&five_hour_limit) {
+        if five_hour_limit.has_percent() {
             if snapshot.usage_percent.is_none() {
                 snapshot.usage_percent = five_hour_limit.usage_percent;
             }
@@ -93,7 +86,7 @@ impl UsageParser for TextUsageParser {
             snapshot.five_hour_usage_limit = Some(five_hour_limit);
         }
 
-        if has_limit_percent(&weekly_limit) || weekly_limit.reset_at.is_some() {
+        if weekly_limit.has_percent() || weekly_limit.reset_at.is_some() {
             snapshot.weekly_usage_limit = Some(weekly_limit);
         }
 
@@ -160,8 +153,8 @@ impl UsageParser for JsonUsageParser {
                 "secondary",
             ],
         );
-        snapshot.usage_percent = number_field(&value, &["usagePercent", "usage_percent", "usage"]);
-        snapshot.remaining_percent = number_field(
+        snapshot.usage_percent = percent_field(&value, &["usagePercent", "usage_percent", "usage"]);
+        snapshot.remaining_percent = percent_field(
             &value,
             &["remainingPercent", "remaining_percent", "remaining"],
         );
@@ -259,25 +252,13 @@ fn has_five_hour_prefix(line: &str) -> bool {
     line.starts_with("5 hour") || line.starts_with("5-hour") || line.starts_with("five hour")
 }
 
-fn complete_limit(limit: &mut UsageLimitSnapshot) {
-    if limit.remaining_percent.is_none() {
-        limit.remaining_percent = limit.usage_percent.map(|used| (100.0 - used).max(0.0));
-    }
-
-    if limit.usage_percent.is_none() {
-        limit.usage_percent = limit
-            .remaining_percent
-            .map(|remaining| (100.0 - remaining).max(0.0));
-    }
-}
-
-fn has_limit_percent(limit: &UsageLimitSnapshot) -> bool {
-    limit.usage_percent.is_some() || limit.remaining_percent.is_some()
-}
-
 fn number_field(value: &serde_json::Value, keys: &[&str]) -> Option<f64> {
     keys.iter()
         .find_map(|key| value.get(*key).and_then(|field| field.as_f64()))
+}
+
+fn percent_field(value: &serde_json::Value, keys: &[&str]) -> Option<f64> {
+    number_field(value, keys).map(clamp_percent)
 }
 
 fn integer_field(value: &serde_json::Value, keys: &[&str]) -> Option<u64> {
@@ -298,7 +279,7 @@ fn limit_field(value: &serde_json::Value, keys: &[&str]) -> Option<UsageLimitSna
     keys.iter().find_map(|key| {
         let field = value.get(*key)?;
         let mut limit = UsageLimitSnapshot {
-            usage_percent: number_field(
+            usage_percent: percent_field(
                 field,
                 &[
                     "usagePercent",
@@ -308,15 +289,15 @@ fn limit_field(value: &serde_json::Value, keys: &[&str]) -> Option<UsageLimitSna
                     "used_percent",
                 ],
             ),
-            remaining_percent: number_field(
+            remaining_percent: percent_field(
                 field,
                 &["remainingPercent", "remaining_percent", "remaining"],
             ),
             reset_at: string_field(field, &["resetAt", "reset_at", "resetsAt", "resets_at"]),
         };
-        complete_limit(&mut limit);
+        limit.complete_percentages();
 
-        if has_limit_percent(&limit) || limit.reset_at.is_some() {
+        if limit.has_percent() || limit.reset_at.is_some() {
             Some(limit)
         } else {
             None
@@ -376,6 +357,15 @@ mod tests {
         assert!(matches!(snapshot.status, UsageStatus::Ok));
         assert_eq!(snapshot.usage_percent, Some(28.0));
         assert_eq!(snapshot.remaining_percent, Some(72.0));
+    }
+
+    #[test]
+    fn clamps_json_percentages() {
+        let snapshot = JsonUsageParser.parse(r#"{"usagePercent":130}"#);
+
+        assert!(matches!(snapshot.status, UsageStatus::Ok));
+        assert_eq!(snapshot.usage_percent, Some(100.0));
+        assert_eq!(snapshot.remaining_percent, Some(0.0));
     }
 
     #[test]
