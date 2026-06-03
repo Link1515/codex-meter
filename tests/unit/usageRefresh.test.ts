@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { canStartManualRefresh, mergeUsageRefreshResult } from "../../src/features/usage/refresh";
+import {
+  configurationRetryDelayMs,
+  minimumAutomaticRefreshDelayMs,
+  nextAutomaticRefreshDelayMs,
+  retryBackoffMaxMs,
+  canStartManualRefresh,
+  mergeUsageRefreshResult
+} from "../../src/features/usage/refresh";
 import type { CodexUsageSnapshot } from "../../src/features/usage/types";
 
 describe("usage refresh controls", () => {
@@ -53,4 +60,30 @@ describe("usage refresh controls", () => {
 
     expect(mergeUsageRefreshResult(previous, next)).toBe(next);
   });
+
+  it("uses the configured automatic refresh interval after a successful refresh", () => {
+    expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("ok"), 90, 0)).toBe(90_000);
+  });
+
+  it("enforces the minimum automatic refresh interval", () => {
+    expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("ok"), 30, 0)).toBe(minimumAutomaticRefreshDelayMs);
+  });
+
+  it("backs off retryable automatic refresh failures", () => {
+    expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("command_error"), 60, 1)).toBe(90_000);
+    expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("timeout"), 60, 2)).toBe(180_000);
+    expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("command_error"), 60, 10)).toBe(retryBackoffMaxMs);
+  });
+
+  it("slows down automatic refresh for configuration and authentication states", () => {
+    expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("not_authenticated"), 60, 1)).toBe(configurationRetryDelayMs);
+  });
 });
+
+function snapshotWithStatus(status: CodexUsageSnapshot["status"]): CodexUsageSnapshot {
+  return {
+    source: "codex-cli",
+    fetchedAt: "100",
+    status
+  };
+}

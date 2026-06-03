@@ -12,7 +12,11 @@ import {
   resolveWeeklyLimit,
   snapshotMessage
 } from "../features/usage/format";
-import { canStartManualRefresh, mergeUsageRefreshResult } from "../features/usage/refresh";
+import {
+  canStartManualRefresh,
+  mergeUsageRefreshResult,
+  nextAutomaticRefreshDelayMs
+} from "../features/usage/refresh";
 import { getAlwaysOnTop, getWindowPlacement, restoreWindowPlacement, setAlwaysOnTop } from "../features/window/api";
 import { loadPinState, loadWindowPlacement, savePinState, saveWindowPlacement } from "../features/window/storage";
 import type { WindowPinState } from "../features/window/types";
@@ -25,9 +29,9 @@ function App() {
   });
   const [pinState, setPinState] = useState<WindowPinState>(loadPinState);
   const [pinBusy, setPinBusy] = useState(false);
-  const [refreshScheduleKey, setRefreshScheduleKey] = useState(0);
   const didRefreshOnStartup = useRef(false);
   const isFetchingUsage = useRef(false);
+  const consecutiveRefreshFailureCount = useRef(0);
   const lastManualRefreshAt = useRef(0);
   const snapshotRef = useRef(usageState.snapshot);
 
@@ -39,9 +43,9 @@ function App() {
     snapshotRef.current = snapshot;
   }, [snapshot]);
 
-  const refreshUsage = useCallback(async (): Promise<void> => {
+  const refreshUsage = useCallback(async (): Promise<CodexUsageSnapshot | undefined> => {
     if (isFetchingUsage.current) {
-      return;
+      return undefined;
     }
 
     const currentSnapshot = snapshotRef.current;
@@ -56,6 +60,9 @@ function App() {
         kind: displaySnapshot.status === "ok" ? "ready" : "failed",
         snapshot: displaySnapshot
       });
+      consecutiveRefreshFailureCount.current =
+        displaySnapshot.status === "ok" ? 0 : consecutiveRefreshFailureCount.current + 1;
+      return displaySnapshot;
     } catch (error) {
       const fallback: CodexUsageSnapshot = {
         ...currentSnapshot,
@@ -64,6 +71,8 @@ function App() {
         errorMessage: error instanceof Error ? error.message : "Unable to fetch Codex usage"
       };
       setUsageState({ kind: "failed", snapshot: fallback });
+      consecutiveRefreshFailureCount.current += 1;
+      return fallback;
     } finally {
       isFetchingUsage.current = false;
     }
@@ -76,7 +85,6 @@ function App() {
     }
 
     lastManualRefreshAt.current = now;
-    setRefreshScheduleKey((currentKey) => currentKey + 1);
     void refreshUsage();
   }, [refreshUsage]);
 
@@ -120,13 +128,21 @@ function App() {
   }, [refreshUsage]);
 
   useEffect(() => {
-    const intervalSeconds = Math.max(30, config.pollIntervalSeconds);
-    const intervalId = window.setInterval(() => {
-      void refreshUsage();
-    }, intervalSeconds * 1000);
+    if (usageState.kind === "loading") {
+      return;
+    }
 
-    return () => window.clearInterval(intervalId);
-  }, [config.pollIntervalSeconds, refreshScheduleKey, refreshUsage]);
+    const delayMs = nextAutomaticRefreshDelayMs(
+      snapshot,
+      config.pollIntervalSeconds,
+      consecutiveRefreshFailureCount.current
+    );
+    const timeoutId = window.setTimeout(() => {
+      void refreshUsage();
+    }, delayMs);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [config.pollIntervalSeconds, refreshUsage, snapshot, usageState.kind]);
 
   const saveCurrentPlacement = useCallback(() => {
     void getWindowPlacement()

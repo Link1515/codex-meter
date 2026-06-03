@@ -1,6 +1,10 @@
 import type { CodexUsageSnapshot } from "./types";
 
 export const manualRefreshDebounceMs = 1000;
+export const minimumAutomaticRefreshDelayMs = 60_000;
+export const retryBackoffBaseMs = 90_000;
+export const retryBackoffMaxMs = 300_000;
+export const configurationRetryDelayMs = 300_000;
 
 export function canStartManualRefresh(
   nowMs: number,
@@ -26,6 +30,31 @@ export function mergeUsageRefreshResult(
     status: nextSnapshot.status,
     errorMessage: nextSnapshot.errorMessage
   };
+}
+
+export function nextAutomaticRefreshDelayMs(
+  snapshot: CodexUsageSnapshot,
+  pollIntervalSeconds: number,
+  consecutiveFailureCount: number
+): number {
+  const configuredDelayMs = Math.max(pollIntervalSeconds * 1000, minimumAutomaticRefreshDelayMs);
+
+  if (snapshot.status === "ok") {
+    return configuredDelayMs;
+  }
+
+  if (isRetryableRefreshStatus(snapshot)) {
+    const retryAttempt = Math.max(0, consecutiveFailureCount - 1);
+    const retryDelayMs = retryBackoffBaseMs * 2 ** retryAttempt;
+
+    return Math.min(Math.max(configuredDelayMs, retryDelayMs), retryBackoffMaxMs);
+  }
+
+  return Math.max(configuredDelayMs, configurationRetryDelayMs);
+}
+
+export function isRetryableRefreshStatus(snapshot: CodexUsageSnapshot): boolean {
+  return snapshot.status === "timeout" || snapshot.status === "command_error";
 }
 
 function hasDisplayableUsage(snapshot: CodexUsageSnapshot): boolean {
