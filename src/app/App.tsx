@@ -243,6 +243,7 @@ function LimitMeter({ label, limit }: LimitMeterProps) {
     () => ({ width: `${Math.max(0, Math.min(100, remainingPercent))}%` }),
     [remainingPercent]
   );
+  const progressTone = getProgressTone(remainingPercent);
 
   return (
     <div className="limit-meter">
@@ -251,11 +252,23 @@ function LimitMeter({ label, limit }: LimitMeterProps) {
         <strong>{formatPercent(limit.remainingPercent)} left</strong>
       </div>
       <div className="progress-track" aria-label={`${label} ${formatPercent(limit.remainingPercent)} remaining`}>
-        <div className="progress-fill" style={progressStyle} />
+        <div className={`progress-fill progress-fill--${progressTone}`} style={progressStyle} />
       </div>
       <Metric label="Reset" value={formatResetTimestamp(limit.resetAt)} />
     </div>
   );
+}
+
+function getProgressTone(remainingPercent: number): "safe" | "warning" | "danger" {
+  if (remainingPercent < 20) {
+    return "danger";
+  }
+
+  if (remainingPercent < 60) {
+    return "warning";
+  }
+
+  return "safe";
 }
 
 export default App;

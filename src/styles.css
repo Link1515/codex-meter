@@ -139,8 +139,21 @@ button {
 .progress-fill {
   height: 100%;
   border-radius: inherit;
+  transition:
+    width 160ms ease,
+    background-color 160ms ease;
+}
+
+.progress-fill--safe {
   background: #3fbf7f;
-  transition: width 160ms ease;
+}
+
+.progress-fill--warning {
+  background: #f59e0b;
+}
+
+.progress-fill--danger {
+  background: #ef4444;
 }
 
 .usage-grid {
