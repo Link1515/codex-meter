@@ -1,4 +1,4 @@
-import { RefreshCw, Settings } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DragRegion } from "../components/DragRegion";
 import { PinButton } from "../components/PinButton";
@@ -167,17 +167,6 @@ function App() {
             <RefreshCw className={usageState.kind === "loading" ? "spin" : ""} size={16} aria-hidden="true" />
           </button>
           <PinButton isPinned={pinState.isPinned} isBusy={pinBusy} onToggle={() => void togglePinned()} />
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="Settings"
-            title="Settings"
-            onClick={() => {
-              window.location.hash = "settings";
-            }}
-          >
-            <Settings size={16} aria-hidden="true" />
-          </button>
         </div>
       </header>
 
