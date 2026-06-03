@@ -30,7 +30,7 @@ describe("usage formatters", () => {
     const resetAt = new Date(2026, 5, 3, 8, 5).toISOString();
     const now = new Date(2026, 5, 2, 9, 0);
 
-    expect(formatResetTimestamp(resetAt, now)).toBe("2026-06-03 08-05 AM");
+    expect(formatResetTimestamp(resetAt, now)).toBe("2026-06-03 08:05 AM");
   });
 
   it("maps stable app statuses to labels", () => {

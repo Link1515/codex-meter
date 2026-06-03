@@ -35,7 +35,7 @@ export function formatResetTimestamp(value: string | undefined, now = new Date()
     return value;
   }
 
-  const time = formatTwelveHourTime(date, isSameLocalDay(date, now) ? ":" : "-");
+  const time = formatTwelveHourTime(date);
 
   if (isSameLocalDay(date, now)) {
     return time;
@@ -65,12 +65,12 @@ function parseTimestamp(value: string): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-function formatTwelveHourTime(date: Date, separator: ":" | "-"): string {
+function formatTwelveHourTime(date: Date): string {
   const hours = date.getHours();
   const period = hours >= 12 ? "PM" : "AM";
   const twelveHour = hours % 12 || 12;
 
-  return `${pad2(twelveHour)}${separator}${pad2(date.getMinutes())} ${period}`;
+  return `${pad2(twelveHour)}:${pad2(date.getMinutes())} ${period}`;
 }
 
 function isSameLocalDay(left: Date, right: Date): boolean {
