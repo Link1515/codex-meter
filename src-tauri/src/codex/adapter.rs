@@ -1,5 +1,6 @@
 use std::{
     env,
+    fs,
     io::{self, BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -38,7 +39,9 @@ pub fn fetch_codex_usage(config: &CliUsageConfig) -> CodexUsageSnapshot {
         );
     }
 
-    let result = if is_app_server_rpc_config(config) {
+    let result = if should_try_oauth_usage(config) {
+        fetch_oauth_usage().or_else(|_| fetch_app_server_rpc_usage(config))
+    } else if is_app_server_rpc_config(config) {
         fetch_app_server_rpc_usage(config)
     } else {
         run_command(config).map(|result| snapshot_from_command_result(config, result))
@@ -70,6 +73,10 @@ pub fn fetch_codex_usage(config: &CliUsageConfig) -> CodexUsageSnapshot {
     }
 }
 
+fn should_try_oauth_usage(config: &CliUsageConfig) -> bool {
+    is_app_server_rpc_config(config) && config.codex_command.trim() != DEV_MOCK_COMMAND_ALIAS
+}
+
 fn is_authentication_error(message: &str) -> bool {
     let lower = message.to_lowercase();
     lower.contains("authentication required")
@@ -77,6 +84,78 @@ fn is_authentication_error(message: &str) -> bool {
         || lower.contains("not logged in")
         || lower.contains("please login")
         || lower.contains("please log in")
+}
+
+fn fetch_oauth_usage() -> io::Result<CodexUsageSnapshot> {
+    let access_token = read_codex_access_token()?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .user_agent(format!("codex-meter/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+    let response = client
+        .get("https://chatgpt.com/backend-api/wham/usage")
+        .bearer_auth(access_token)
+        .send()
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+    let status = response.status();
+
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Codex OAuth token is missing or expired",
+        ));
+    }
+
+    if !status.is_success() {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("Codex OAuth usage API returned HTTP {}", status.as_u16()),
+        ));
+    }
+
+    let value = response
+        .json::<serde_json::Value>()
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+
+    snapshot_from_oauth_usage(value)
+}
+
+fn read_codex_access_token() -> io::Result<String> {
+    let auth_path = codex_auth_path()?;
+    let raw = fs::read_to_string(auth_path)?;
+    let auth = serde_json::from_str::<CodexAuthFile>(&raw)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+
+    auth.tokens
+        .and_then(|tokens| tokens.access_token)
+        .filter(|token| !token.trim().is_empty())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Codex OAuth access token missing"))
+}
+
+fn codex_auth_path() -> io::Result<PathBuf> {
+    if let Ok(codex_home) = env::var("CODEX_HOME") {
+        let trimmed = codex_home.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed).join("auth.json"));
+        }
+    }
+
+    let home = env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "User home directory not found"))?;
+
+    Ok(PathBuf::from(home).join(".codex").join("auth.json"))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CodexAuthFile {
+    tokens: Option<CodexAuthTokens>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CodexAuthTokens {
+    access_token: Option<String>,
 }
 
 pub(crate) fn is_app_server_rpc_config(config: &CliUsageConfig) -> bool {
@@ -262,6 +341,7 @@ struct RpcAccount {
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RpcRateLimitsResult {
+    #[serde(alias = "rateLimits")]
     rate_limits: RpcRateLimitSnapshot,
 }
 
@@ -280,11 +360,122 @@ struct RpcRateLimitWindow {
     resets_at: Option<u64>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OAuthUsageResponse {
+    #[serde(alias = "plan_type")]
+    plan_type: Option<String>,
+    #[serde(alias = "rate_limit")]
+    rate_limit: Option<OAuthRateLimitDetails>,
+    #[serde(alias = "rateLimits")]
+    rate_limits: Option<RpcRateLimitSnapshot>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OAuthRateLimitDetails {
+    #[serde(alias = "primary_window")]
+    primary_window: Option<OAuthRateLimitWindow>,
+    #[serde(alias = "secondary_window")]
+    secondary_window: Option<OAuthRateLimitWindow>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OAuthRateLimitWindow {
+    #[serde(alias = "used_percent")]
+    used_percent: f64,
+    #[serde(alias = "reset_at", alias = "resetsAt", alias = "resets_at")]
+    resets_at: Option<u64>,
+}
+
+fn snapshot_from_oauth_usage(value: serde_json::Value) -> io::Result<CodexUsageSnapshot> {
+    let response = serde_json::from_value::<OAuthUsageResponse>(value).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Codex OAuth usage response could not be parsed: {error}"),
+        )
+    })?;
+
+    let mut snapshot = CodexUsageSnapshot::with_status(UsageStatus::Ok, None);
+    snapshot.fetched_at = current_timestamp();
+    snapshot.account_plan = response.plan_type;
+
+    if let Some(rate_limit) = response.rate_limit {
+        if let Some(primary) = rate_limit.primary_window {
+            apply_oauth_primary_window(&mut snapshot, primary);
+        }
+
+        if let Some(secondary) = rate_limit.secondary_window {
+            let weekly = limit_from_oauth_window(secondary);
+            snapshot.weekly_reset_at = weekly.reset_at.clone();
+            snapshot.weekly_usage_limit = Some(weekly);
+        }
+    }
+
+    if let Some(rate_limits) = response.rate_limits {
+        if snapshot.five_hour_usage_limit.is_none() {
+            if let Some(primary) = rate_limits.primary {
+                let usage_percent = primary.used_percent.clamp(0.0, 100.0);
+                snapshot.usage_percent = Some(usage_percent);
+                snapshot.remaining_percent = Some((100.0 - usage_percent).max(0.0));
+                snapshot.window_reset_at = primary.resets_at.map(|value| value.to_string());
+                snapshot.five_hour_usage_limit = Some(limit_from_rpc_window(primary));
+            }
+        }
+
+        if snapshot.weekly_usage_limit.is_none() {
+            if let Some(secondary) = rate_limits.secondary {
+                let weekly = limit_from_rpc_window(secondary);
+                snapshot.weekly_reset_at = weekly.reset_at.clone();
+                snapshot.weekly_usage_limit = Some(weekly);
+            }
+        }
+
+        snapshot.account_plan = snapshot.account_plan.or(rate_limits.plan_type);
+    }
+
+    if snapshot.five_hour_usage_limit.is_none()
+        && snapshot.weekly_usage_limit.is_none()
+        && snapshot.usage_percent.is_none()
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Codex OAuth usage response contained no rate limit windows",
+        ));
+    }
+
+    Ok(snapshot)
+}
+
+fn apply_oauth_primary_window(snapshot: &mut CodexUsageSnapshot, window: OAuthRateLimitWindow) {
+    let usage_percent = window.used_percent.clamp(0.0, 100.0);
+    let reset_at = window.resets_at.map(|value| value.to_string());
+    snapshot.usage_percent = Some(usage_percent);
+    snapshot.remaining_percent = Some((100.0 - usage_percent).max(0.0));
+    snapshot.window_reset_at = reset_at.clone();
+    snapshot.five_hour_usage_limit = Some(UsageLimitSnapshot {
+        usage_percent: Some(usage_percent),
+        remaining_percent: Some((100.0 - usage_percent).max(0.0)),
+        reset_at,
+    });
+}
+
+fn limit_from_oauth_window(window: OAuthRateLimitWindow) -> UsageLimitSnapshot {
+    let usage_percent = window.used_percent.clamp(0.0, 100.0);
+
+    UsageLimitSnapshot {
+        usage_percent: Some(usage_percent),
+        remaining_percent: Some((100.0 - usage_percent).max(0.0)),
+        reset_at: window.resets_at.map(|value| value.to_string()),
+    }
+}
+
 fn snapshot_from_rate_limits(
     value: serde_json::Value,
     account: Option<RpcAccountResult>,
 ) -> io::Result<CodexUsageSnapshot> {
-    let response = serde_json::from_value::<RpcRateLimitsResult>(value).map_err(|error| {
+    let response = deserialize_rate_limits_result(value).map_err(|error| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Codex app-server rate limits response could not be parsed: {error}"),
@@ -316,6 +507,16 @@ fn snapshot_from_rate_limits(
     });
 
     Ok(snapshot)
+}
+
+fn deserialize_rate_limits_result(
+    value: serde_json::Value,
+) -> Result<RpcRateLimitsResult, serde_json::Error> {
+    if value.get("primary").is_some() || value.get("secondary").is_some() {
+        serde_json::from_value(serde_json::json!({ "rateLimits": value }))
+    } else {
+        serde_json::from_value(value)
+    }
 }
 
 fn limit_from_rpc_window(window: RpcRateLimitWindow) -> UsageLimitSnapshot {
@@ -609,7 +810,8 @@ pub fn sanitize_message(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        fetch_codex_usage, is_app_server_rpc_config, summary_text, DEV_MOCK_COMMAND_ALIAS,
+        fetch_codex_usage, is_app_server_rpc_config, snapshot_from_oauth_usage, summary_text,
+        DEV_MOCK_COMMAND_ALIAS,
     };
     use crate::codex::types::{CliUsageConfig, ParserMode, UsageStatus};
 
@@ -650,5 +852,64 @@ mod tests {
         };
 
         assert!(is_app_server_rpc_config(&config));
+    }
+
+    #[test]
+    fn parses_oauth_usage_response() {
+        let snapshot = snapshot_from_oauth_usage(serde_json::json!({
+            "plan_type": "plus",
+            "rate_limit": {
+                "primary_window": {
+                    "used_percent": 28,
+                    "reset_at": 1777969707
+                },
+                "secondary_window": {
+                    "used_percent": 45,
+                    "reset_at": 1778574507
+                }
+            }
+        }))
+        .expect("OAuth usage response should parse");
+
+        assert!(matches!(snapshot.status, UsageStatus::Ok));
+        assert_eq!(snapshot.account_plan, Some("plus".to_string()));
+        assert_eq!(snapshot.usage_percent, Some(28.0));
+        assert_eq!(snapshot.remaining_percent, Some(72.0));
+        assert_eq!(snapshot.window_reset_at, Some("1777969707".to_string()));
+        assert_eq!(
+            snapshot
+                .weekly_usage_limit
+                .as_ref()
+                .and_then(|limit| limit.usage_percent),
+            Some(45.0)
+        );
+    }
+
+    #[test]
+    fn parses_oauth_rate_limits_shape() {
+        let snapshot = snapshot_from_oauth_usage(serde_json::json!({
+            "rateLimits": {
+                "planType": "team",
+                "primary": {
+                    "usedPercent": 12,
+                    "resetsAt": 1777969707
+                },
+                "secondary": {
+                    "usedPercent": 20,
+                    "resetsAt": 1778574507
+                }
+            }
+        }))
+        .expect("OAuth rateLimits response should parse");
+
+        assert_eq!(snapshot.account_plan, Some("team".to_string()));
+        assert_eq!(snapshot.usage_percent, Some(12.0));
+        assert_eq!(
+            snapshot
+                .weekly_usage_limit
+                .as_ref()
+                .and_then(|limit| limit.remaining_percent),
+            Some(80.0)
+        );
     }
 }

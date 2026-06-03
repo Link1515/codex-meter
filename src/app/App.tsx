@@ -38,10 +38,24 @@ function App() {
   const snapshot = usageState.snapshot;
   const fiveHourLimit = resolveFiveHourLimit(snapshot);
   const weeklyLimit = resolveWeeklyLimit(snapshot);
-
   useEffect(() => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
+
+  const applyUsageSnapshot = useCallback((nextSnapshot: CodexUsageSnapshot): CodexUsageSnapshot => {
+    const currentSnapshot = snapshotRef.current;
+    const displaySnapshot = mergeUsageRefreshResult(currentSnapshot, nextSnapshot);
+    saveCachedSnapshot(displaySnapshot);
+    snapshotRef.current = displaySnapshot;
+    setUsageState({
+      kind: displaySnapshot.status === "ok" ? "ready" : "failed",
+      snapshot: displaySnapshot
+    });
+    consecutiveRefreshFailureCount.current =
+      displaySnapshot.status === "ok" ? 0 : consecutiveRefreshFailureCount.current + 1;
+
+    return displaySnapshot;
+  }, []);
 
   const refreshUsage = useCallback(async (): Promise<CodexUsageSnapshot | undefined> => {
     if (isFetchingUsage.current) {
@@ -54,15 +68,7 @@ function App() {
 
     try {
       const nextSnapshot = await fetchUsage(config);
-      const displaySnapshot = mergeUsageRefreshResult(currentSnapshot, nextSnapshot);
-      saveCachedSnapshot(displaySnapshot);
-      setUsageState({
-        kind: displaySnapshot.status === "ok" ? "ready" : "failed",
-        snapshot: displaySnapshot
-      });
-      consecutiveRefreshFailureCount.current =
-        displaySnapshot.status === "ok" ? 0 : consecutiveRefreshFailureCount.current + 1;
-      return displaySnapshot;
+      return applyUsageSnapshot(nextSnapshot);
     } catch (error) {
       const fallback: CodexUsageSnapshot = {
         ...currentSnapshot,
@@ -70,13 +76,14 @@ function App() {
         status: "command_error",
         errorMessage: error instanceof Error ? error.message : "Unable to fetch Codex usage"
       };
+      snapshotRef.current = fallback;
       setUsageState({ kind: "failed", snapshot: fallback });
       consecutiveRefreshFailureCount.current += 1;
       return fallback;
     } finally {
       isFetchingUsage.current = false;
     }
-  }, [config]);
+  }, [applyUsageSnapshot, config]);
 
   const refreshUsageManually = useCallback((): void => {
     const now = Date.now();

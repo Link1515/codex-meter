@@ -10,7 +10,8 @@ describe("usage config storage", () => {
 
     expect(loadUsageConfig()).toMatchObject({
       codexCommand: "codex",
-      usageArgs: ["-s", "read-only", "-a", "untrusted", "app-server"]
+      usageArgs: ["-s", "read-only", "-a", "untrusted", "app-server"],
+      pollIntervalSeconds: 60
     });
 
     vi.unstubAllGlobals();
