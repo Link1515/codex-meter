@@ -12,7 +12,7 @@ import {
   resolveWeeklyLimit,
   snapshotMessage
 } from "../features/usage/format";
-import { canStartManualRefresh } from "../features/usage/refresh";
+import { canStartManualRefresh, mergeUsageRefreshResult } from "../features/usage/refresh";
 import { getAlwaysOnTop, getWindowPlacement, restoreWindowPlacement, setAlwaysOnTop } from "../features/window/api";
 import { loadPinState, loadWindowPlacement, savePinState, saveWindowPlacement } from "../features/window/storage";
 import type { WindowPinState } from "../features/window/types";
@@ -50,10 +50,11 @@ function App() {
 
     try {
       const nextSnapshot = await fetchUsage(config);
-      saveCachedSnapshot(nextSnapshot);
+      const displaySnapshot = mergeUsageRefreshResult(currentSnapshot, nextSnapshot);
+      saveCachedSnapshot(displaySnapshot);
       setUsageState({
-        kind: nextSnapshot.status === "ok" ? "ready" : "failed",
-        snapshot: nextSnapshot
+        kind: displaySnapshot.status === "ok" ? "ready" : "failed",
+        snapshot: displaySnapshot
       });
     } catch (error) {
       const fallback: CodexUsageSnapshot = {

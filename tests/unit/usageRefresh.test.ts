@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { canStartManualRefresh } from "../../src/features/usage/refresh";
+import { canStartManualRefresh, mergeUsageRefreshResult } from "../../src/features/usage/refresh";
+import type { CodexUsageSnapshot } from "../../src/features/usage/types";
 
 describe("usage refresh controls", () => {
   it("allows a manual refresh outside the debounce window", () => {
@@ -8,5 +9,48 @@ describe("usage refresh controls", () => {
 
   it("blocks a manual refresh inside the debounce window", () => {
     expect(canStartManualRefresh(1500, 900, 1000)).toBe(false);
+  });
+
+  it("keeps the previous usage values when an automatic refresh returns an error snapshot", () => {
+    const previous: CodexUsageSnapshot = {
+      source: "codex-cli",
+      fetchedAt: "100",
+      status: "ok",
+      usagePercent: 28,
+      remainingPercent: 72,
+      fiveHourUsageLimit: { usagePercent: 28, remainingPercent: 72, resetAt: "200" },
+      weeklyUsageLimit: { usagePercent: 45, remainingPercent: 55, resetAt: "300" }
+    };
+    const next: CodexUsageSnapshot = {
+      source: "codex-cli",
+      fetchedAt: "101",
+      status: "timeout",
+      errorMessage: "Codex CLI command timed out"
+    };
+
+    expect(mergeUsageRefreshResult(previous, next)).toEqual({
+      ...previous,
+      fetchedAt: "101",
+      rawOutput: undefined,
+      status: "timeout",
+      errorMessage: "Codex CLI command timed out"
+    });
+  });
+
+  it("uses the error snapshot as-is when there is no previous usage to show", () => {
+    const previous: CodexUsageSnapshot = {
+      source: "codex-cli",
+      fetchedAt: "",
+      status: "unknown",
+      errorMessage: "No usage data available yet"
+    };
+    const next: CodexUsageSnapshot = {
+      source: "codex-cli",
+      fetchedAt: "101",
+      status: "command_error",
+      errorMessage: "Codex CLI command failed"
+    };
+
+    expect(mergeUsageRefreshResult(previous, next)).toBe(next);
   });
 });
