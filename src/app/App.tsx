@@ -18,10 +18,12 @@ import {
   nextAutomaticRefreshDelayMs
 } from "../features/usage/refresh";
 import { getAlwaysOnTop, getWindowPlacement, restoreWindowPlacement, setAlwaysOnTop } from "../features/window/api";
+import { useAutoWindowSize } from "../features/window/autoSize";
 import { loadPinState, loadWindowPlacement, savePinState, saveWindowPlacement } from "../features/window/storage";
 import type { WindowPinState } from "../features/window/types";
 
 function App() {
+  const contentRef = useRef<HTMLDivElement>(null);
   const [config] = useState(loadUsageConfig);
   const [usageState, setUsageState] = useState<UsageViewState>({
     kind: "idle",
@@ -38,6 +40,8 @@ function App() {
   const snapshot = usageState.snapshot;
   const fiveHourLimit = resolveFiveHourLimit(snapshot);
   const weeklyLimit = resolveWeeklyLimit(snapshot);
+  useAutoWindowSize(contentRef, { preferCompactSize: snapshot.status === "ok" });
+
   useEffect(() => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
@@ -175,36 +179,38 @@ function App() {
 
   return (
     <DragRegion className="app-shell" element="main" onDragComplete={saveCurrentPlacement}>
-      <header className="window-header">
-        <div className="title-stack">
-          <span className="app-title">Codex Meter</span>
-        </div>
-        <div className="window-actions">
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="Refresh usage"
-            title="Refresh usage"
-            disabled={usageState.kind === "loading"}
-            onClick={refreshUsageManually}
-          >
-            <RefreshCw className={usageState.kind === "loading" ? "spin" : ""} size={16} aria-hidden="true" />
-          </button>
-          <PinButton isPinned={pinState.isPinned} isBusy={pinBusy} onToggle={() => void togglePinned()} />
-        </div>
-      </header>
-
-      <section className="usage-panel" aria-label="Codex usage">
-        <LimitMeter label="5 hour" limit={fiveHourLimit} />
-        <LimitMeter label="Weekly" limit={weeklyLimit} />
-
-        {snapshot.status === "ok" ? null : (
-          <div className={`status-line status-${snapshot.status}`}>
-            <span className="status-dot" />
-            <span>{snapshotMessage(snapshot)}</span>
+      <div className="app-content" ref={contentRef}>
+        <header className="window-header">
+          <div className="title-stack">
+            <span className="app-title">Codex Meter</span>
           </div>
-        )}
-      </section>
+          <div className="window-actions">
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="Refresh usage"
+              title="Refresh usage"
+              disabled={usageState.kind === "loading"}
+              onClick={refreshUsageManually}
+            >
+              <RefreshCw className={usageState.kind === "loading" ? "spin" : ""} size={16} aria-hidden="true" />
+            </button>
+            <PinButton isPinned={pinState.isPinned} isBusy={pinBusy} onToggle={() => void togglePinned()} />
+          </div>
+        </header>
+
+        <section className="usage-panel" aria-label="Codex usage">
+          <LimitMeter label="5 hour" limit={fiveHourLimit} />
+          <LimitMeter label="Weekly" limit={weeklyLimit} />
+
+          {snapshot.status === "ok" ? null : (
+            <div className={`status-line status-${snapshot.status}`}>
+              <span className="status-dot" />
+              <span>{snapshotMessage(snapshot)}</span>
+            </div>
+          )}
+        </section>
+      </div>
     </DragRegion>
   );
 }
