@@ -7,22 +7,22 @@ export const MIN_WINDOW_HEIGHT = 232;
 export const MAX_WINDOW_WIDTH = 420;
 export const MAX_WINDOW_HEIGHT = 360;
 const SIZE_CHANGE_THRESHOLD = 1;
+const CONTENT_SIZE_PADDING = 2;
 
 type WindowSize = {
   width: number;
   height: number;
 };
 
-type AutoWindowSizeOptions = {
-  preferCompactSize?: boolean;
+type ContentSizeMetrics = {
+  scrollWidth: number;
+  scrollHeight: number;
+  boundingWidth: number;
+  boundingHeight: number;
 };
 
-export function useAutoWindowSize(
-  contentRef: RefObject<HTMLElement | null>,
-  options: AutoWindowSizeOptions = {}
-): void {
+export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): void {
   const lastAppliedSize = useRef<WindowSize | undefined>(undefined);
-  const preferCompactSize = options.preferCompactSize ?? false;
 
   useEffect(() => {
     const content = contentRef.current;
@@ -34,7 +34,7 @@ export function useAutoWindowSize(
     let animationFrameId: number | undefined;
 
     const applySize = () => {
-      const nextSize = preferCompactSize ? compactWindowSize() : measureWindowSize(content);
+      const nextSize = measureWindowSize(content);
       const previousSize = lastAppliedSize.current;
 
       if (previousSize && isSameSize(previousSize, nextSize)) {
@@ -65,23 +65,29 @@ export function useAutoWindowSize(
         window.cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [contentRef, preferCompactSize]);
+  }, [contentRef]);
 }
 
 function measureWindowSize(content: HTMLElement): WindowSize {
-  const nextWidth = content.scrollWidth > content.clientWidth ? content.scrollWidth : MIN_WINDOW_WIDTH;
-  const nextHeight = content.scrollHeight > content.clientHeight ? content.scrollHeight : MIN_WINDOW_HEIGHT;
+  const rect = content.getBoundingClientRect();
+
+  return resolveWindowSize({
+    scrollWidth: content.scrollWidth,
+    scrollHeight: content.scrollHeight,
+    boundingWidth: rect.width,
+    boundingHeight: rect.height
+  });
+}
+
+export function resolveWindowSize(metrics: ContentSizeMetrics): WindowSize {
+  const measuredWidth = Math.max(metrics.scrollWidth, metrics.boundingWidth);
+  const measuredHeight = Math.max(metrics.scrollHeight, metrics.boundingHeight);
+  const nextWidth = measuredWidth > MIN_WINDOW_WIDTH ? measuredWidth + CONTENT_SIZE_PADDING : MIN_WINDOW_WIDTH;
+  const nextHeight = measuredHeight > MIN_WINDOW_HEIGHT ? measuredHeight + CONTENT_SIZE_PADDING : MIN_WINDOW_HEIGHT;
 
   return {
     width: clamp(Math.ceil(nextWidth), MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH),
     height: clamp(Math.ceil(nextHeight), MIN_WINDOW_HEIGHT, MAX_WINDOW_HEIGHT)
-  };
-}
-
-function compactWindowSize(): WindowSize {
-  return {
-    width: MIN_WINDOW_WIDTH,
-    height: MIN_WINDOW_HEIGHT
   };
 }
 

@@ -40,7 +40,7 @@ function App() {
   const snapshot = usageState.snapshot;
   const fiveHourLimit = resolveFiveHourLimit(snapshot);
   const weeklyLimit = resolveWeeklyLimit(snapshot);
-  useAutoWindowSize(contentRef, { preferCompactSize: snapshot.status === "ok" });
+  useAutoWindowSize(contentRef);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
