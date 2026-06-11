@@ -32,7 +32,21 @@ describe("window auto size", () => {
       })
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
-      height: 241
+      height: 247
+    });
+  });
+
+  it("falls back to the compact minimum for invalid measurements", () => {
+    expect(
+      resolveWindowSize({
+        scrollWidth: Number.NaN,
+        scrollHeight: Number.NaN,
+        boundingWidth: Number.NaN,
+        boundingHeight: Number.NaN
+      })
+    ).toEqual({
+      width: MIN_WINDOW_WIDTH,
+      height: MIN_WINDOW_HEIGHT
     });
   });
 

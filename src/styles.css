@@ -74,6 +74,7 @@ button {
   color: #f4f7fb;
   font-size: 16px;
   font-weight: 700;
+  line-height: 1.2;
   white-space: nowrap;
 }
 
@@ -81,6 +82,7 @@ button {
 .metric span {
   color: #93a4b7;
   font-size: 11px;
+  line-height: 1.35;
 }
 
 .window-actions {
@@ -119,14 +121,14 @@ button {
 }
 
 .limit-meter {
-  padding: 0 0 16px;
+  padding: 0 0 14px;
   border-bottom: 1px solid #243241;
   display: grid;
-  gap: 11px;
+  gap: 10px;
 }
 
 .limit-meter + .limit-meter {
-  padding-top: 16px;
+  padding-top: 14px;
   padding-bottom: 0;
   border-bottom: 0;
 }
@@ -138,6 +140,7 @@ button {
   gap: 10px;
   color: #93a4b7;
   font-size: 11px;
+  line-height: 1.35;
 }
 
 .limit-heading strong {
@@ -211,9 +214,7 @@ button {
 
 .status-line span:last-child {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .status-dot {

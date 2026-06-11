@@ -1,4 +1,4 @@
-use tauri::{Manager, PhysicalPosition, Window};
+use tauri::{LogicalSize, Manager, PhysicalPosition, Window};
 
 use crate::codex::errors::AppError;
 use crate::window::{
@@ -33,6 +33,30 @@ pub fn start_dragging(window: Window) -> Result<(), AppError> {
     window.start_dragging().map_err(|error| {
         AppError::window_control_failed(format!("Unable to start drag: {}", error))
     })
+}
+
+#[tauri::command]
+pub fn set_window_size(window: Window, width: f64, height: f64) -> Result<(), AppError> {
+    if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+        return Err(AppError::invalid_config("Window size must be positive finite values"));
+    }
+
+    window.set_resizable(true).map_err(|error| {
+        AppError::window_control_failed(format!("Unable to prepare window resize: {}", error))
+    })?;
+
+    let resize_result = window
+        .set_size(LogicalSize::new(width, height))
+        .map_err(|error| AppError::window_control_failed(format!("Unable to resize window: {}", error)));
+
+    let restore_result = window.set_resizable(false).map_err(|error| {
+        AppError::window_control_failed(format!("Unable to restore fixed window size: {}", error))
+    });
+
+    resize_result?;
+    restore_result?;
+
+    Ok(())
 }
 
 #[tauri::command]
