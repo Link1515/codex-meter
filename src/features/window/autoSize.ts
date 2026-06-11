@@ -1,6 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef, type RefObject } from "react";
-import { setWindowSize } from "./api";
+import { setWindowSize, showWindow } from "./api";
 
 export const MIN_WINDOW_WIDTH = 280;
 export const MIN_WINDOW_HEIGHT = 232;
@@ -24,6 +24,7 @@ type ContentSizeMetrics = {
 
 export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): void {
   const lastAppliedSize = useRef<WindowSize | undefined>(undefined);
+  const didShowWindow = useRef(false);
 
   useEffect(() => {
     const content = contentRef.current;
@@ -42,12 +43,21 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
         return;
       }
 
-      void setWindowSize(nextSize.width, nextSize.height)
+      const shouldShowWindow = !didShowWindow.current;
+      void setWindowSize(nextSize.width, nextSize.height, shouldShowWindow)
         .then(() => {
           lastAppliedSize.current = nextSize;
+          if (shouldShowWindow) {
+            didShowWindow.current = true;
+          }
         })
         .catch(() => {
-          // Auto sizing is best effort; window command failures should not block usage refresh.
+          if (!didShowWindow.current) {
+            didShowWindow.current = true;
+            void showWindow().catch(() => {
+              // Auto sizing and initial reveal are best effort; failures should not block usage refresh.
+            });
+          }
         });
     };
 

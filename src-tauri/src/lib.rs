@@ -5,7 +5,7 @@ mod window;
 use commands::usage::{fetch_usage, test_cli_command};
 use commands::window::{
     get_always_on_top, get_window_placement, restore_window_placement, set_always_on_top,
-    set_window_size, start_dragging,
+    set_window_size, show_window, start_dragging,
 };
 
 pub fn run() {
@@ -17,6 +17,7 @@ pub fn run() {
             get_always_on_top,
             start_dragging,
             set_window_size,
+            show_window,
             get_window_placement,
             restore_window_placement
         ])

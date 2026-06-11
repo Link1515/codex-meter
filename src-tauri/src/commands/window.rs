@@ -36,7 +36,14 @@ pub fn start_dragging(window: Window) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-pub fn set_window_size(window: Window, width: f64, height: f64) -> Result<(), AppError> {
+pub fn show_window(window: Window) -> Result<(), AppError> {
+    window
+        .show()
+        .map_err(|error| AppError::window_control_failed(format!("Unable to show window: {}", error)))
+}
+
+#[tauri::command]
+pub fn set_window_size(window: Window, width: f64, height: f64, show: bool) -> Result<(), AppError> {
     if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
         return Err(AppError::invalid_config("Window size must be positive finite values"));
     }
@@ -55,6 +62,10 @@ pub fn set_window_size(window: Window, width: f64, height: f64) -> Result<(), Ap
 
     resize_result?;
     restore_result?;
+
+    if show {
+        show_window(window)?;
+    }
 
     Ok(())
 }
