@@ -48,7 +48,7 @@ Do not add Electron.
 Implemented:
 
 - Compact frameless widget window configured in `src-tauri/tauri.conf.json`.
-- Usage display for 5-hour and weekly limits.
+- Usage display for the weekly remaining limit.
 - Manual refresh button with debounce.
 - Automatic polling with minimum 60 second delay and retry backoff.
 - Cached last usage snapshot to avoid blank UI on startup.
@@ -216,7 +216,6 @@ Current main UI contains:
 - App title
 - Refresh icon button
 - Pin icon button
-- 5-hour limit meter
 - Weekly limit meter
 - Error/status line for non-ok snapshots
 
@@ -329,8 +328,6 @@ Expected sample output:
 ```txt
 Codex usage
 Model: gpt-5-codex
-5 hour usage limit: 28%
-5 hour resets at: 2026-01-01T18:00:00+08:00
 Weekly usage limit: 45%
 Weekly resets at: 2026-01-04T00:00:00+08:00
 ```

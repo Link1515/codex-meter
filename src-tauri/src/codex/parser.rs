@@ -34,7 +34,6 @@ impl UsageParser for TextUsageParser {
         }
 
         let mut snapshot = CodexUsageSnapshot::with_status(UsageStatus::Ok, None);
-        let mut five_hour_limit = UsageLimitSnapshot::empty();
         let mut weekly_limit = UsageLimitSnapshot::empty();
 
         for line in trimmed.lines() {
@@ -46,65 +45,35 @@ impl UsageParser for TextUsageParser {
             } else if lower_line.starts_with("plan:") || lower_line.starts_with("account plan:") {
                 snapshot.account_plan = value_after_colon(normalized);
             } else if lower_line.starts_with("usage:") || lower_line.starts_with("used:") {
-                snapshot.usage_percent = percent_after_colon(normalized);
+                weekly_limit.usage_percent = percent_after_colon(normalized);
             } else if lower_line.starts_with("remaining:") {
-                snapshot.remaining_percent = percent_after_colon(normalized);
-            } else if is_five_hour_usage_line(&lower_line) {
-                five_hour_limit.usage_percent = percent_after_colon(normalized);
-            } else if is_five_hour_remaining_line(&lower_line) {
-                five_hour_limit.remaining_percent = percent_after_colon(normalized);
+                weekly_limit.remaining_percent = percent_after_colon(normalized);
             } else if is_weekly_usage_line(&lower_line) {
                 weekly_limit.usage_percent = percent_after_colon(normalized);
             } else if is_weekly_remaining_line(&lower_line) {
                 weekly_limit.remaining_percent = percent_after_colon(normalized);
             } else if lower_line.starts_with("window resets at:") {
-                snapshot.window_reset_at = value_after_colon(normalized);
-            } else if lower_line.starts_with("5 hour resets at:")
-                || lower_line.starts_with("5-hour resets at:")
-                || lower_line.starts_with("five hour resets at:")
-            {
-                five_hour_limit.reset_at = value_after_colon(normalized);
+                weekly_limit.reset_at = value_after_colon(normalized);
             } else if lower_line.starts_with("weekly resets at:") {
-                snapshot.weekly_reset_at = value_after_colon(normalized);
-                weekly_limit.reset_at = snapshot.weekly_reset_at.clone();
+                weekly_limit.reset_at = value_after_colon(normalized);
             }
         }
 
-        five_hour_limit.complete_percentages();
         weekly_limit.complete_percentages();
-
-        if five_hour_limit.has_percent() {
-            if snapshot.usage_percent.is_none() {
-                snapshot.usage_percent = five_hour_limit.usage_percent;
-            }
-            if snapshot.remaining_percent.is_none() {
-                snapshot.remaining_percent = five_hour_limit.remaining_percent;
-            }
-            if snapshot.window_reset_at.is_none() {
-                snapshot.window_reset_at = five_hour_limit.reset_at.clone();
-            }
-            snapshot.five_hour_usage_limit = Some(five_hour_limit);
-        }
 
         if weekly_limit.has_percent() || weekly_limit.reset_at.is_some() {
             snapshot.weekly_usage_limit = Some(weekly_limit);
         }
 
-        if snapshot.usage_percent.is_none() && snapshot.remaining_percent.is_none() {
+        if snapshot
+            .weekly_usage_limit
+            .as_ref()
+            .is_none_or(|limit| !limit.has_percent())
+        {
             return CodexUsageSnapshot::with_status(
                 UsageStatus::ParseError,
                 Some("No usage or remaining percentage found".to_string()),
             );
-        }
-
-        if snapshot.remaining_percent.is_none() {
-            snapshot.remaining_percent = snapshot.usage_percent.map(|used| (100.0 - used).max(0.0));
-        }
-
-        if snapshot.usage_percent.is_none() {
-            snapshot.usage_percent = snapshot
-                .remaining_percent
-                .map(|remaining| (100.0 - remaining).max(0.0));
         }
 
         snapshot.fetched_at = current_timestamp();
@@ -135,15 +104,6 @@ impl UsageParser for JsonUsageParser {
         };
 
         let mut snapshot = CodexUsageSnapshot::with_status(UsageStatus::Ok, None);
-        snapshot.five_hour_usage_limit = limit_field(
-            &value,
-            &[
-                "fiveHourUsageLimit",
-                "five_hour_usage_limit",
-                "fiveHour",
-                "primary",
-            ],
-        );
         snapshot.weekly_usage_limit = limit_field(
             &value,
             &[
@@ -151,57 +111,47 @@ impl UsageParser for JsonUsageParser {
                 "weekly_usage_limit",
                 "weekly",
                 "secondary",
+                "primary",
             ],
         );
-        snapshot.usage_percent = percent_field(&value, &["usagePercent", "usage_percent", "usage"]);
-        snapshot.remaining_percent = percent_field(
-            &value,
-            &["remainingPercent", "remaining_percent", "remaining"],
-        );
-        if let Some(limit) = &snapshot.five_hour_usage_limit {
-            if snapshot.usage_percent.is_none() {
-                snapshot.usage_percent = limit.usage_percent;
+        if snapshot.weekly_usage_limit.is_none() {
+            let mut weekly_limit = UsageLimitSnapshot {
+                usage_percent: percent_field(&value, &["usagePercent", "usage_percent", "usage"]),
+                remaining_percent: percent_field(
+                    &value,
+                    &["remainingPercent", "remaining_percent", "remaining"],
+                ),
+                reset_at: string_field(
+                    &value,
+                    &[
+                        "weeklyResetAt",
+                        "weekly_reset_at",
+                        "windowResetAt",
+                        "window_reset_at",
+                        "resetAt",
+                        "reset_at",
+                    ],
+                ),
+            };
+            weekly_limit.complete_percentages();
+
+            if weekly_limit.has_percent() || weekly_limit.reset_at.is_some() {
+                snapshot.weekly_usage_limit = Some(weekly_limit);
             }
-            if snapshot.remaining_percent.is_none() {
-                snapshot.remaining_percent = limit.remaining_percent;
-            }
-        }
-        snapshot.used_tokens = integer_field(&value, &["usedTokens", "used_tokens"]);
-        snapshot.remaining_tokens = integer_field(&value, &["remainingTokens", "remaining_tokens"]);
-        snapshot.total_tokens = integer_field(&value, &["totalTokens", "total_tokens"]);
-        snapshot.window_reset_at = string_field(&value, &["windowResetAt", "window_reset_at"]);
-        snapshot.weekly_reset_at = string_field(&value, &["weeklyResetAt", "weekly_reset_at"]);
-        if snapshot.window_reset_at.is_none() {
-            snapshot.window_reset_at = snapshot
-                .five_hour_usage_limit
-                .as_ref()
-                .and_then(|limit| limit.reset_at.clone());
-        }
-        if snapshot.weekly_reset_at.is_none() {
-            snapshot.weekly_reset_at = snapshot
-                .weekly_usage_limit
-                .as_ref()
-                .and_then(|limit| limit.reset_at.clone());
         }
         snapshot.account_plan = string_field(&value, &["accountPlan", "account_plan", "plan"]);
         snapshot.model = string_field(&value, &["model"]);
         snapshot.fetched_at = current_timestamp();
 
-        if snapshot.usage_percent.is_none() && snapshot.remaining_percent.is_none() {
+        if snapshot
+            .weekly_usage_limit
+            .as_ref()
+            .is_none_or(|limit| !limit.has_percent())
+        {
             return CodexUsageSnapshot::with_status(
                 UsageStatus::ParseError,
                 Some("No usage or remaining percentage found in JSON output".to_string()),
             );
-        }
-
-        if snapshot.remaining_percent.is_none() {
-            snapshot.remaining_percent = snapshot.usage_percent.map(|used| (100.0 - used).max(0.0));
-        }
-
-        if snapshot.usage_percent.is_none() {
-            snapshot.usage_percent = snapshot
-                .remaining_percent
-                .map(|remaining| (100.0 - remaining).max(0.0));
         }
 
         snapshot
@@ -232,24 +182,12 @@ fn percent_after_colon(line: &str) -> Option<f64> {
     })
 }
 
-fn is_five_hour_usage_line(line: &str) -> bool {
-    has_five_hour_prefix(line) && (line.contains("usage") || line.contains("used"))
-}
-
-fn is_five_hour_remaining_line(line: &str) -> bool {
-    has_five_hour_prefix(line) && (line.contains("remaining") || line.contains("left"))
-}
-
 fn is_weekly_usage_line(line: &str) -> bool {
     line.starts_with("weekly") && (line.contains("usage") || line.contains("used"))
 }
 
 fn is_weekly_remaining_line(line: &str) -> bool {
     line.starts_with("weekly") && (line.contains("remaining") || line.contains("left"))
-}
-
-fn has_five_hour_prefix(line: &str) -> bool {
-    line.starts_with("5 hour") || line.starts_with("5-hour") || line.starts_with("five hour")
 }
 
 fn number_field(value: &serde_json::Value, keys: &[&str]) -> Option<f64> {
@@ -259,11 +197,6 @@ fn number_field(value: &serde_json::Value, keys: &[&str]) -> Option<f64> {
 
 fn percent_field(value: &serde_json::Value, keys: &[&str]) -> Option<f64> {
     number_field(value, keys).map(clamp_percent)
-}
-
-fn integer_field(value: &serde_json::Value, keys: &[&str]) -> Option<u64> {
-    keys.iter()
-        .find_map(|key| value.get(*key).and_then(|field| field.as_u64()))
 }
 
 fn string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
@@ -316,24 +249,23 @@ mod tests {
         let snapshot = TextUsageParser.parse(output);
 
         assert!(matches!(snapshot.status, UsageStatus::Ok));
-        assert_eq!(snapshot.usage_percent, Some(28.0));
-        assert_eq!(snapshot.remaining_percent, Some(72.0));
+        assert_eq!(
+            snapshot
+                .weekly_usage_limit
+                .as_ref()
+                .and_then(|limit| limit.usage_percent),
+            Some(28.0)
+        );
         assert_eq!(snapshot.model, Some("gpt-5-codex".to_string()));
     }
 
     #[test]
-    fn parses_text_limit_windows() {
-        let output = "Codex usage\n5 hour usage limit: 28%\n5 hour resets at: 2026-01-01T18:00:00+08:00\nWeekly usage limit: 45%\nWeekly resets at: 2026-01-04T00:00:00+08:00";
+    fn parses_text_weekly_limit() {
+        let output =
+            "Codex usage\nWeekly usage limit: 45%\nWeekly resets at: 2026-01-04T00:00:00+08:00";
         let snapshot = TextUsageParser.parse(output);
 
         assert!(matches!(snapshot.status, UsageStatus::Ok));
-        assert_eq!(
-            snapshot
-                .five_hour_usage_limit
-                .as_ref()
-                .and_then(|limit| limit.remaining_percent),
-            Some(72.0)
-        );
         assert_eq!(
             snapshot
                 .weekly_usage_limit
@@ -355,8 +287,13 @@ mod tests {
         let snapshot = JsonUsageParser.parse(r#"{"usagePercent":28,"remainingPercent":72}"#);
 
         assert!(matches!(snapshot.status, UsageStatus::Ok));
-        assert_eq!(snapshot.usage_percent, Some(28.0));
-        assert_eq!(snapshot.remaining_percent, Some(72.0));
+        assert_eq!(
+            snapshot
+                .weekly_usage_limit
+                .as_ref()
+                .and_then(|limit| limit.remaining_percent),
+            Some(72.0)
+        );
     }
 
     #[test]
@@ -364,18 +301,21 @@ mod tests {
         let snapshot = JsonUsageParser.parse(r#"{"usagePercent":130}"#);
 
         assert!(matches!(snapshot.status, UsageStatus::Ok));
-        assert_eq!(snapshot.usage_percent, Some(100.0));
-        assert_eq!(snapshot.remaining_percent, Some(0.0));
+        assert_eq!(
+            snapshot
+                .weekly_usage_limit
+                .as_ref()
+                .and_then(|limit| limit.remaining_percent),
+            Some(0.0)
+        );
     }
 
     #[test]
     fn parses_json_limit_windows() {
-        let snapshot = JsonUsageParser.parse(
-            r#"{"fiveHourUsageLimit":{"usagePercent":28,"resetAt":"2026-01-01T18:00:00+08:00"},"weeklyUsageLimit":{"remainingPercent":55}}"#,
-        );
+        let snapshot = JsonUsageParser
+            .parse(r#"{"primary":{"usagePercent":45,"resetAt":"2026-01-04T00:00:00+08:00"}}"#);
 
         assert!(matches!(snapshot.status, UsageStatus::Ok));
-        assert_eq!(snapshot.usage_percent, Some(28.0));
         assert_eq!(
             snapshot
                 .weekly_usage_limit

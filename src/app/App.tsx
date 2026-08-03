@@ -8,7 +8,6 @@ import type { CodexUsageSnapshot, UsageViewState } from "../features/usage/types
 import {
   formatPercent,
   formatResetTimestamp,
-  resolveFiveHourLimit,
   resolveWeeklyLimit,
   snapshotMessage
 } from "../features/usage/format";
@@ -38,7 +37,6 @@ function App() {
   const snapshotRef = useRef(usageState.snapshot);
 
   const snapshot = usageState.snapshot;
-  const fiveHourLimit = resolveFiveHourLimit(snapshot);
   const weeklyLimit = resolveWeeklyLimit(snapshot);
   useAutoWindowSize(contentRef);
 
@@ -200,7 +198,6 @@ function App() {
         </header>
 
         <section className="usage-panel" aria-label="Codex usage">
-          <LimitMeter label="5 hour" limit={fiveHourLimit} />
           <LimitMeter label="Weekly" limit={weeklyLimit} />
 
           {snapshot.status === "ok" ? null : (

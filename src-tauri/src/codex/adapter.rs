@@ -401,28 +401,16 @@ fn snapshot_from_oauth_usage(value: serde_json::Value) -> io::Result<CodexUsageS
     snapshot.account_plan = response.plan_type;
 
     if let Some(rate_limit) = response.rate_limit {
-        if let Some(primary) = rate_limit.primary_window {
-            apply_oauth_primary_window(&mut snapshot, primary);
-        }
-
-        if let Some(secondary) = rate_limit.secondary_window {
-            let weekly = limit_from_oauth_window(secondary);
-            snapshot.weekly_reset_at = weekly.reset_at.clone();
+        if let Some(window) = rate_limit.secondary_window.or(rate_limit.primary_window) {
+            let weekly = limit_from_oauth_window(window);
             snapshot.weekly_usage_limit = Some(weekly);
         }
     }
 
     if let Some(rate_limits) = response.rate_limits {
-        if snapshot.five_hour_usage_limit.is_none() {
-            if let Some(primary) = rate_limits.primary {
-                apply_primary_usage_limit(&mut snapshot, limit_from_rpc_window(primary));
-            }
-        }
-
         if snapshot.weekly_usage_limit.is_none() {
-            if let Some(secondary) = rate_limits.secondary {
-                let weekly = limit_from_rpc_window(secondary);
-                snapshot.weekly_reset_at = weekly.reset_at.clone();
+            if let Some(window) = rate_limits.secondary.or(rate_limits.primary) {
+                let weekly = limit_from_rpc_window(window);
                 snapshot.weekly_usage_limit = Some(weekly);
             }
         }
@@ -430,10 +418,7 @@ fn snapshot_from_oauth_usage(value: serde_json::Value) -> io::Result<CodexUsageS
         snapshot.account_plan = snapshot.account_plan.or(rate_limits.plan_type);
     }
 
-    if snapshot.five_hour_usage_limit.is_none()
-        && snapshot.weekly_usage_limit.is_none()
-        && snapshot.usage_percent.is_none()
-    {
+    if snapshot.weekly_usage_limit.is_none() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "Codex OAuth usage response contained no rate limit windows",
@@ -441,10 +426,6 @@ fn snapshot_from_oauth_usage(value: serde_json::Value) -> io::Result<CodexUsageS
     }
 
     Ok(snapshot)
-}
-
-fn apply_oauth_primary_window(snapshot: &mut CodexUsageSnapshot, window: OAuthRateLimitWindow) {
-    apply_primary_usage_limit(snapshot, limit_from_oauth_window(window));
 }
 
 fn limit_from_oauth_window(window: OAuthRateLimitWindow) -> UsageLimitSnapshot {
@@ -465,21 +446,21 @@ fn snapshot_from_rate_limits(
         )
     })?;
 
-    let primary = response.rate_limits.primary.ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Codex app-server returned no primary usage window",
-        )
-    })?;
+    let weekly_window = response
+        .rate_limits
+        .secondary
+        .or(response.rate_limits.primary)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Codex app-server returned no weekly usage window",
+            )
+        })?;
 
     let mut snapshot = CodexUsageSnapshot::with_status(UsageStatus::Ok, None);
     snapshot.fetched_at = current_timestamp();
-    apply_primary_usage_limit(&mut snapshot, limit_from_rpc_window(primary));
-    let secondary = response.rate_limits.secondary.map(limit_from_rpc_window);
-    snapshot.weekly_reset_at = secondary
-        .as_ref()
-        .and_then(|window| window.reset_at.clone());
-    snapshot.weekly_usage_limit = secondary;
+    let weekly = limit_from_rpc_window(weekly_window);
+    snapshot.weekly_usage_limit = Some(weekly);
     snapshot.account_plan = response.rate_limits.plan_type.or_else(|| {
         account
             .and_then(|value| value.account)
@@ -504,19 +485,6 @@ fn limit_from_rpc_window(window: RpcRateLimitWindow) -> UsageLimitSnapshot {
         window.used_percent,
         window.resets_at.map(|value| value.to_string()),
     )
-}
-
-fn apply_primary_usage_limit(snapshot: &mut CodexUsageSnapshot, limit: UsageLimitSnapshot) {
-    if let Some(usage_percent) = limit.usage_percent {
-        snapshot.usage_percent = Some(usage_percent);
-    }
-
-    if let Some(remaining_percent) = limit.remaining_percent {
-        snapshot.remaining_percent = Some(remaining_percent);
-    }
-
-    snapshot.window_reset_at = limit.reset_at.clone();
-    snapshot.five_hour_usage_limit = Some(limit);
 }
 
 pub fn run_command(config: &CliUsageConfig) -> io::Result<CommandRunResult> {
@@ -800,8 +768,8 @@ pub fn sanitize_message(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        fetch_codex_usage, is_app_server_rpc_config, snapshot_from_oauth_usage, summary_text,
-        DEV_MOCK_COMMAND_ALIAS,
+        fetch_codex_usage, is_app_server_rpc_config, snapshot_from_oauth_usage,
+        snapshot_from_rate_limits, summary_text, DEV_MOCK_COMMAND_ALIAS,
     };
     use crate::codex::types::{CliUsageConfig, ParserMode, UsageStatus};
 
@@ -815,8 +783,13 @@ mod tests {
         });
 
         assert!(matches!(snapshot.status, UsageStatus::Ok));
-        assert_eq!(snapshot.usage_percent, Some(28.0));
-        assert_eq!(snapshot.remaining_percent, Some(72.0));
+        assert_eq!(
+            snapshot
+                .weekly_usage_limit
+                .as_ref()
+                .and_then(|limit| limit.remaining_percent),
+            Some(55.0)
+        );
     }
 
     #[test]
@@ -845,6 +818,28 @@ mod tests {
     }
 
     #[test]
+    fn maps_a_single_app_server_window_to_the_weekly_limit() {
+        let snapshot = snapshot_from_rate_limits(
+            serde_json::json!({
+                "primary": {
+                    "usedPercent": 20,
+                    "resetsAt": 1778574507
+                }
+            }),
+            None,
+        )
+        .expect("A single rate-limit window should parse");
+
+        assert_eq!(
+            snapshot
+                .weekly_usage_limit
+                .as_ref()
+                .and_then(|limit| limit.remaining_percent),
+            Some(80.0)
+        );
+    }
+
+    #[test]
     fn parses_oauth_usage_response() {
         let snapshot = snapshot_from_oauth_usage(serde_json::json!({
             "plan_type": "plus",
@@ -863,9 +858,6 @@ mod tests {
 
         assert!(matches!(snapshot.status, UsageStatus::Ok));
         assert_eq!(snapshot.account_plan, Some("plus".to_string()));
-        assert_eq!(snapshot.usage_percent, Some(28.0));
-        assert_eq!(snapshot.remaining_percent, Some(72.0));
-        assert_eq!(snapshot.window_reset_at, Some("1777969707".to_string()));
         assert_eq!(
             snapshot
                 .weekly_usage_limit
@@ -893,7 +885,6 @@ mod tests {
         .expect("OAuth rateLimits response should parse");
 
         assert_eq!(snapshot.account_plan, Some("team".to_string()));
-        assert_eq!(snapshot.usage_percent, Some(12.0));
         assert_eq!(
             snapshot
                 .weekly_usage_limit

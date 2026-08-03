@@ -3,7 +3,6 @@ import {
   commandPreview,
   formatPercent,
   formatResetTimestamp,
-  resolveFiveHourLimit,
   resolveWeeklyLimit,
   statusLabel
 } from "../../src/features/usage/format";
@@ -48,20 +47,14 @@ describe("usage formatters", () => {
     })).toBe("mock codex usage");
   });
 
-  it("resolves limit windows from new snapshot fields", () => {
+  it("resolves the weekly limit from the snapshot", () => {
     const snapshot: CodexUsageSnapshot = {
       source: "codex-cli",
       fetchedAt: "0",
-      fiveHourUsageLimit: { usagePercent: 28, remainingPercent: 72, resetAt: "five-hour-reset" },
       weeklyUsageLimit: { usagePercent: 45, remainingPercent: 55, resetAt: "weekly-reset" },
       status: "ok"
     };
 
-    expect(resolveFiveHourLimit(snapshot)).toEqual({
-      usagePercent: 28,
-      remainingPercent: 72,
-      resetAt: "five-hour-reset"
-    });
     expect(resolveWeeklyLimit(snapshot)).toEqual({
       usagePercent: 45,
       remainingPercent: 55,
@@ -69,22 +62,14 @@ describe("usage formatters", () => {
     });
   });
 
-  it("keeps legacy single-window snapshots compatible", () => {
+  it("keeps an incomplete weekly snapshot displayable", () => {
     const snapshot: CodexUsageSnapshot = {
       source: "codex-cli",
       fetchedAt: "0",
-      usagePercent: 28,
-      remainingPercent: 72,
-      windowResetAt: "window-reset",
-      weeklyResetAt: "weekly-reset",
+      weeklyUsageLimit: { resetAt: "weekly-reset" },
       status: "ok"
     };
 
-    expect(resolveFiveHourLimit(snapshot)).toEqual({
-      usagePercent: 28,
-      remainingPercent: 72,
-      resetAt: "window-reset"
-    });
     expect(resolveWeeklyLimit(snapshot)).toEqual({
       usagePercent: undefined,
       remainingPercent: undefined,

@@ -101,18 +101,10 @@ export function commandPreview(config: CliUsageConfig): string {
   return [config.codexCommand, ...config.usageArgs].join(" ");
 }
 
-export function resolveFiveHourLimit(snapshot: CodexUsageSnapshot): UsageLimitSnapshot {
-  return {
-    usagePercent: snapshot.fiveHourUsageLimit?.usagePercent ?? snapshot.usagePercent,
-    remainingPercent: snapshot.fiveHourUsageLimit?.remainingPercent ?? snapshot.remainingPercent,
-    resetAt: snapshot.fiveHourUsageLimit?.resetAt ?? snapshot.windowResetAt
-  };
-}
-
 export function resolveWeeklyLimit(snapshot: CodexUsageSnapshot): UsageLimitSnapshot {
   return {
     usagePercent: snapshot.weeklyUsageLimit?.usagePercent,
     remainingPercent: snapshot.weeklyUsageLimit?.remainingPercent,
-    resetAt: snapshot.weeklyUsageLimit?.resetAt ?? snapshot.weeklyResetAt
+    resetAt: snapshot.weeklyUsageLimit?.resetAt
   };
 }

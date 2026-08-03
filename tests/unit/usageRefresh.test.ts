@@ -23,9 +23,6 @@ describe("usage refresh controls", () => {
       source: "codex-cli",
       fetchedAt: "100",
       status: "ok",
-      usagePercent: 28,
-      remainingPercent: 72,
-      fiveHourUsageLimit: { usagePercent: 28, remainingPercent: 72, resetAt: "200" },
       weeklyUsageLimit: { usagePercent: 45, remainingPercent: 55, resetAt: "300" }
     };
     const next: CodexUsageSnapshot = {
