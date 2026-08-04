@@ -218,10 +218,15 @@ type MetricProps = {
 };
 
 function Metric({ label, value }: MetricProps) {
+  const [primaryValue, detailValue] = value.split("\n", 2);
+
   return (
     <div className="metric">
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong>
+        <span className="metric-value">{primaryValue}</span>
+        {detailValue ? <span className="metric-detail">{detailValue}</span> : null}
+      </strong>
     </div>
   );
 }

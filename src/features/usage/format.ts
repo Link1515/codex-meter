@@ -36,12 +36,13 @@ export function formatResetTimestamp(value: string | undefined, now = new Date()
   }
 
   const time = formatTwelveHourTime(date);
+  const remainingDays = formatRemainingDays(date, now);
 
   if (isSameLocalDay(date, now)) {
-    return time;
+    return `${time}\n${remainingDays}`;
   }
 
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${time}`;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${time}\n${remainingDays}`;
 }
 
 export function statusLabel(status: UsageStatus): string {
@@ -79,6 +80,14 @@ function isSameLocalDay(left: Date, right: Date): boolean {
     left.getMonth() === right.getMonth() &&
     left.getDate() === right.getDate()
   );
+}
+
+function formatRemainingDays(resetAt: Date, now: Date): string {
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  const remainingMilliseconds = Math.max(0, resetAt.getTime() - now.getTime());
+  const days = Math.ceil(remainingMilliseconds / millisecondsPerDay);
+
+  return `${days} day${days === 1 ? "" : "s"} remaining`;
 }
 
 function pad2(value: number): string {

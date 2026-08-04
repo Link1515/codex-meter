@@ -22,14 +22,21 @@ describe("usage formatters", () => {
     const resetAt = new Date(2026, 5, 2, 15, 30).toISOString();
     const now = new Date(2026, 5, 2, 9, 0);
 
-    expect(formatResetTimestamp(resetAt, now)).toBe("03:30 PM");
+    expect(formatResetTimestamp(resetAt, now)).toBe("03:30 PM\n1 day remaining");
   });
 
   it("formats other-day reset timestamps with date and 12-hour time", () => {
     const resetAt = new Date(2026, 5, 3, 8, 5).toISOString();
     const now = new Date(2026, 5, 2, 9, 0);
 
-    expect(formatResetTimestamp(resetAt, now)).toBe("2026-06-03 08:05 AM");
+    expect(formatResetTimestamp(resetAt, now)).toBe("2026-06-03 08:05 AM\n1 day remaining");
+  });
+
+  it("clamps elapsed reset timestamps to zero remaining days", () => {
+    const resetAt = new Date(2026, 5, 1, 8, 5).toISOString();
+    const now = new Date(2026, 5, 2, 9, 0);
+
+    expect(formatResetTimestamp(resetAt, now)).toBe("2026-06-01 08:05 AM\n0 days remaining");
   });
 
   it("maps stable app statuses to labels", () => {
