@@ -56,12 +56,15 @@ Implemented:
 - Persisted pinned state.
 - Drag region component with placement save on drag completion.
 - Window placement restore with visible-bounds correction.
+- Content-aware window sizing, constrained to a compact 280–420 × 160–360 logical-pixel range.
+- The Tauri window remains hidden until its first content-driven resize completes, avoiding a visible resize flash.
 - Rust Codex adapter with timeout handling and command output capture.
 - Text parser and JSON parser.
 - Codex `app-server` RPC probe for `account/rateLimits/read`.
-- OAuth usage fallback using the local Codex auth file.
+- OAuth usage probe using the local Codex auth file, preferred for the default app-server configuration; app-server RPC is the fallback.
+- Backend `test_cli_command` command for a future settings UI; it returns sanitized stdout/stderr summaries and a parser result.
 - Mock CLI in `dev/mock-codex-cli`.
-- Unit tests for usage refresh/storage/format, pin state, parser behavior, adapter helpers, and placement correction.
+- Unit tests for usage refresh/storage/format, pin state, auto-sizing, parser behavior, adapter helpers, and placement correction.
 
 Not yet implemented or incomplete:
 
@@ -96,7 +99,7 @@ Keep the three-layer separation:
    - Owns CLI execution, app-server RPC, OAuth usage probing, parsing, timeout handling, and sanitization.
    - Parser implementations live in `src-tauri/src/codex/parser.rs`.
 
-Window control belongs in `src-tauri/src/commands/window.rs`, `src-tauri/src/window`, and frontend `src/features/window`.
+Window control belongs in `src-tauri/src/commands/window.rs`, `src-tauri/src/window`, and frontend `src/features/window`. The adaptive sizing hook measures cloned rendered content; keep sizing calculations and Tauri resize calls out of React view components.
 
 Usage fetching belongs in `src-tauri/src/commands/usage.rs`, `src-tauri/src/codex`, and frontend `src/features/usage`.
 
@@ -114,8 +117,10 @@ src/features/usage/refresh.ts           Refresh debounce, cache merge, backoff
 src/features/usage/storage.ts           Usage config and snapshot localStorage
 src/features/usage/format.ts            Display formatting
 src/features/window/api.ts              Frontend Tauri window command wrappers
+src/features/window/autoSize.ts         Content measurement and bounded adaptive window sizing
 src/features/window/storage.ts          Pin and placement localStorage
 src-tauri/src/codex/adapter.rs          CLI/RPC/OAuth usage adapter
+src-tauri/src/codex/errors.rs           Tauri command error model
 src-tauri/src/codex/parser.rs           Text and JSON parsers
 src-tauri/src/codex/types.rs            Backend usage data model
 src-tauri/src/commands/usage.rs         Tauri usage commands
@@ -141,7 +146,7 @@ The current default frontend config is:
 }
 ```
 
-The backend treats configs containing `app-server` as Codex app-server RPC usage probes. For normal stdout parsing, use `parserMode: "Text"` or `parserMode: "Json"` with non-`app-server` args.
+The backend treats configs containing `app-server` as Codex usage probes. Except for the development mock, the default configuration first tries the local OAuth usage endpoint and falls back to the Codex app-server RPC probe. For normal stdout parsing, use `parserMode: "Text"` or `parserMode: "Json"` with non-`app-server` args.
 
 Development mock alias:
 
@@ -196,7 +201,9 @@ Current constants live in `src/features/usage/refresh.ts`.
 
 ## Window Rules
 
-- The main window is fixed-size, frameless, and not resizable.
+- The main window is frameless and user-non-resizable. It adapts to rendered content within the configured minimum and maximum dimensions.
+- The initial window must remain hidden until the first sizing attempt completes; later sizing failures must fall back to showing it.
+- Tauri briefly enables resizing only while applying a programmatic size, and must restore the non-resizable state afterwards.
 - Pin state defaults to unpinned and is stored in `localStorage`.
 - Pin toggle uses Tauri `set_always_on_top`.
 - Dragging uses `start_dragging`; avoid making buttons or interactive controls drag regions.
@@ -218,6 +225,8 @@ Current main UI contains:
 - Pin icon button
 - Weekly limit meter
 - Error/status line for non-ok snapshots
+
+The widget is initially hidden by Tauri configuration and is revealed by `useAutoWindowSize` after the initial sizing attempt.
 
 When adding UI:
 
@@ -340,7 +349,7 @@ Do not make tests depend on a real Codex CLI install or real OpenAI account.
 
 Near-term:
 
-1. Add Settings UI for CLI command, args, poll interval, timeout, parser mode, and manual command test.
+1. Add Settings UI for CLI command, args, poll interval, timeout, parser mode, and the existing backend manual command test.
 2. Add regex parser mode.
 3. Add raw output debug mode gated behind an explicit setting.
 4. Add tray integration and tooltip.
