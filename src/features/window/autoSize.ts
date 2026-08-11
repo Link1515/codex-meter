@@ -3,7 +3,9 @@ import { useEffect, useRef, type RefObject } from "react";
 import { setWindowSize, showWindow } from "./api";
 
 export const MIN_WINDOW_WIDTH = 280;
-export const MIN_WINDOW_HEIGHT = 160;
+// Leave room for platform font metrics and display scaling. The meter's content
+// is compact, but 160 logical pixels can clip its final line on some systems.
+export const MIN_WINDOW_HEIGHT = 184;
 export const MAX_WINDOW_WIDTH = 420;
 export const MAX_WINDOW_HEIGHT = 360;
 const SIZE_CHANGE_THRESHOLD = 1;

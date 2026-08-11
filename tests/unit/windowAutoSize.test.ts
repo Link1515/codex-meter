@@ -8,13 +8,27 @@ import {
 } from "../../src/features/window/autoSize";
 
 describe("window auto size", () => {
-  it("keeps the compact minimum when content fits", () => {
+  it("keeps the safe compact minimum when content fits", () => {
     expect(
       resolveWindowSize({
         scrollWidth: MIN_WINDOW_WIDTH,
         scrollHeight: MIN_WINDOW_HEIGHT,
         boundingWidth: MIN_WINDOW_WIDTH,
         boundingHeight: MIN_WINDOW_HEIGHT
+      })
+    ).toEqual({
+      width: MIN_WINDOW_WIDTH,
+      height: MIN_WINDOW_HEIGHT
+    });
+  });
+
+  it("keeps extra headroom when content is slightly shorter than the safe minimum", () => {
+    expect(
+      resolveWindowSize({
+        scrollWidth: MIN_WINDOW_WIDTH,
+        scrollHeight: MIN_WINDOW_HEIGHT - 12,
+        boundingWidth: MIN_WINDOW_WIDTH,
+        boundingHeight: MIN_WINDOW_HEIGHT - 12
       })
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
