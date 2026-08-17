@@ -22,7 +22,7 @@ describe("window auto size", () => {
     });
   });
 
-  it("keeps extra headroom when content is slightly shorter than the safe minimum", () => {
+  it("keeps the compact baseline when content is shorter", () => {
     expect(
       resolveWindowSize({
         scrollWidth: MIN_WINDOW_WIDTH,
@@ -33,6 +33,20 @@ describe("window auto size", () => {
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
       height: MIN_WINDOW_HEIGHT
+    });
+  });
+
+  it("adds headroom when platform font metrics exceed the compact baseline", () => {
+    expect(
+      resolveWindowSize({
+        scrollWidth: MIN_WINDOW_WIDTH,
+        scrollHeight: MIN_WINDOW_HEIGHT + 0.25,
+        boundingWidth: MIN_WINDOW_WIDTH,
+        boundingHeight: MIN_WINDOW_HEIGHT + 0.25
+      })
+    ).toEqual({
+      width: MIN_WINDOW_WIDTH,
+      height: MIN_WINDOW_HEIGHT + 9
     });
   });
 

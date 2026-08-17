@@ -14,9 +14,9 @@
       {
         "title": "Codex Meter",
         "width": 320,
-        "height": 194,
+        "height": 170,
         "minWidth": 280,
-        "minHeight": 184,
+        "minHeight": 160,
         "maxWidth": 420,
         "maxHeight": 360,
         "resizable": false,

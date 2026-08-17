@@ -3,9 +3,9 @@ import { useEffect, useRef, type RefObject } from "react";
 import { setWindowSize, showWindow } from "./api";
 
 export const MIN_WINDOW_WIDTH = 280;
-// Leave room for platform font metrics and display scaling. The meter's content
-// is compact, but 160 logical pixels can clip its final line on some systems.
-export const MIN_WINDOW_HEIGHT = 184;
+// This is the compact layout baseline. Taller content is measured at runtime so
+// platform font metrics and display scaling do not require permanent blank space.
+export const MIN_WINDOW_HEIGHT = 160;
 export const MAX_WINDOW_WIDTH = 420;
 export const MAX_WINDOW_HEIGHT = 360;
 const SIZE_CHANGE_THRESHOLD = 1;
@@ -36,6 +36,7 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
 
     let animationFrameId: number | undefined;
     const settleTimeoutIds: number[] = [];
+    let isActive = true;
 
     const applySize = () => {
       const nextSize = measureWindowSize(content);
@@ -78,8 +79,14 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
     SETTLE_DELAY_MS.forEach((delayMs) => {
       settleTimeoutIds.push(window.setTimeout(scheduleApplySize, delayMs));
     });
+    void document.fonts?.ready.then(() => {
+      if (isActive) {
+        scheduleApplySize();
+      }
+    });
 
     return () => {
+      isActive = false;
       resizeObserver.disconnect();
       window.removeEventListener("resize", scheduleApplySize);
       settleTimeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
