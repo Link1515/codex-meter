@@ -6,6 +6,7 @@ import { fetchUsage } from "../features/usage/api";
 import { loadUsageConfig, loadCachedSnapshot, saveCachedSnapshot } from "../features/usage/storage";
 import type { CodexUsageSnapshot, UsageViewState } from "../features/usage/types";
 import {
+  formatDatedResetTimestamp,
   formatPercent,
   formatCompactResetTimestamp,
   resolveFiveHourLimit,
@@ -201,7 +202,7 @@ function App() {
 
         <section className="usage-panel" aria-label="Codex usage">
           <LimitMeter label="5h" limit={fiveHourLimit} />
-          <LimitMeter label="Weekly" limit={weeklyLimit} />
+          <LimitMeter label="Weekly" limit={weeklyLimit} showResetDate />
 
           {snapshot.status === "ok" ? null : (
             <div className={`status-line status-${snapshot.status}`}>
@@ -217,6 +218,7 @@ function App() {
 
 type LimitMeterProps = {
   label: string;
+  showResetDate?: boolean;
   limit: {
     usagePercent?: number;
     remainingPercent?: number;
@@ -224,11 +226,13 @@ type LimitMeterProps = {
   };
 };
 
-function LimitMeter({ label, limit }: LimitMeterProps) {
+function LimitMeter({ label, limit, showResetDate = false }: LimitMeterProps) {
   const remainingPercent = limit.remainingPercent ?? 0;
   const progressTone = getProgressTone(remainingPercent);
   const remainingLabel = formatPercent(limit.remainingPercent);
-  const resetLabel = formatCompactResetTimestamp(limit.resetAt);
+  const resetLabel = showResetDate
+    ? formatDatedResetTimestamp(limit.resetAt)
+    : formatCompactResetTimestamp(limit.resetAt);
   const progressStroke = `${Math.max(0, Math.min(100, remainingPercent))} 100`;
 
   return (

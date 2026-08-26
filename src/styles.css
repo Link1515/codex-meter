@@ -196,7 +196,8 @@ button {
   font-size: 10px;
   line-height: 1.35;
   margin-top: -20px;
-  white-space: nowrap;
+  text-align: center;
+  white-space: pre-line;
 }
 
 .status-line {

@@ -63,6 +63,20 @@ export function formatCompactResetTimestamp(value: string | undefined, now = new
   return `${shortWeekday(date)} ${formatTwelveHourTime(date)}`;
 }
 
+export function formatDatedResetTimestamp(value: string | undefined): string {
+  if (!value) {
+    return "--";
+  }
+
+  const date = parseTimestamp(value);
+
+  if (!date) {
+    return value;
+  }
+
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} (${shortWeekday(date)})\n${formatTwelveHourTime(date)}`;
+}
+
 export function statusLabel(status: UsageStatus): string {
   const labels: Record<UsageStatus, string> = {
     ok: "Ready",
