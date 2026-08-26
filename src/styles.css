@@ -118,9 +118,11 @@ button {
 }
 
 .limit-meter {
+  --reset-visual-offset: 16px;
   display: grid;
   justify-items: center;
   align-content: start;
+  padding-block-end: var(--reset-visual-offset);
   row-gap: 4px;
   min-width: 0;
 }
@@ -198,7 +200,7 @@ button {
   margin-top: 0;
   text-align: center;
   /* Keep the label in normal flow for sizing, then restore its compact visual offset. */
-  transform: translateY(-20px);
+  transform: translateY(calc(0px - var(--reset-visual-offset)));
   white-space: pre-line;
 }
 
