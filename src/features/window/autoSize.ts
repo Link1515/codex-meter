@@ -10,6 +10,7 @@ export const MAX_WINDOW_WIDTH = 420;
 export const MAX_WINDOW_HEIGHT = 360;
 const SIZE_CHANGE_THRESHOLD = 1;
 const CONTENT_WIDTH_PADDING = 8;
+const CONTENT_HEIGHT_PADDING = 4;
 const SETTLE_DELAY_MS = [80, 240, 600];
 
 type WindowSize = {
@@ -138,7 +139,7 @@ export function resolveWindowSize(metrics: ContentSizeMetrics): WindowSize {
   const measuredWidth = safeMax(metrics.scrollWidth, metrics.boundingWidth);
   const measuredHeight = safeMax(metrics.scrollHeight, metrics.boundingHeight);
   const nextWidth = expandWhenNeeded(measuredWidth, MIN_WINDOW_WIDTH, CONTENT_WIDTH_PADDING);
-  const nextHeight = expandWhenNeeded(measuredHeight, MIN_WINDOW_HEIGHT);
+  const nextHeight = expandWhenNeeded(measuredHeight, MIN_WINDOW_HEIGHT, CONTENT_HEIGHT_PADDING);
 
   return {
     width: clamp(Math.ceil(nextWidth), MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH),

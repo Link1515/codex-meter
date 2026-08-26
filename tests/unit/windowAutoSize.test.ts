@@ -46,7 +46,7 @@ describe("window auto size", () => {
       })
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
-      height: MIN_WINDOW_HEIGHT + 1
+      height: MIN_WINDOW_HEIGHT + 5
     });
   });
 
@@ -60,7 +60,7 @@ describe("window auto size", () => {
       })
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
-      height: 239
+      height: 243
     });
   });
 
