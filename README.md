@@ -4,7 +4,7 @@
   <img src="assets/app-icon.svg" alt="Codex Meter app icon" width="120" height="120">
 </p>
 
-Codex Meter 是一個輕量的桌面小工具，用來快速查看本機 Codex CLI 的 usage / token 剩餘量。
+Codex Meter 是一個輕量的桌面小工具，用來快速查看本機 Codex CLI 的剩餘額度。
 
 它會透過你電腦上的 Codex CLI 查詢目前用量，不會讀取瀏覽器資料、不會爬取網頁，也不會儲存 OpenAI 帳號密碼。
 
