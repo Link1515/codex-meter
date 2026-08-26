@@ -45,6 +45,24 @@ export function formatResetTimestamp(value: string | undefined, now = new Date()
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${time}\n${remainingDays}`;
 }
 
+export function formatCompactResetTimestamp(value: string | undefined, now = new Date()): string {
+  if (!value) {
+    return "--";
+  }
+
+  const date = parseTimestamp(value);
+
+  if (!date) {
+    return value;
+  }
+
+  if (isSameLocalDay(date, now)) {
+    return formatTwelveHourTime(date);
+  }
+
+  return `${shortWeekday(date)} ${formatTwelveHourTime(date)}`;
+}
+
 export function statusLabel(status: UsageStatus): string {
   const labels: Record<UsageStatus, string> = {
     ok: "Ready",
@@ -88,6 +106,10 @@ function formatRemainingDays(resetAt: Date, now: Date): string {
   const days = Math.ceil(remainingMilliseconds / millisecondsPerDay);
 
   return `${days} day${days === 1 ? "" : "s"} remaining`;
+}
+
+function shortWeekday(date: Date): string {
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()];
 }
 
 function pad2(value: number): string {

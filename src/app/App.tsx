@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DragRegion } from "../components/DragRegion";
 import { PinButton } from "../components/PinButton";
 import { fetchUsage } from "../features/usage/api";
@@ -7,7 +7,7 @@ import { loadUsageConfig, loadCachedSnapshot, saveCachedSnapshot } from "../feat
 import type { CodexUsageSnapshot, UsageViewState } from "../features/usage/types";
 import {
   formatPercent,
-  formatResetTimestamp,
+  formatCompactResetTimestamp,
   resolveFiveHourLimit,
   resolveWeeklyLimit,
   snapshotMessage
@@ -200,7 +200,7 @@ function App() {
         </header>
 
         <section className="usage-panel" aria-label="Codex usage">
-          <LimitMeter label="5 hours" limit={fiveHourLimit} />
+          <LimitMeter label="5h" limit={fiveHourLimit} />
           <LimitMeter label="Weekly" limit={weeklyLimit} />
 
           {snapshot.status === "ok" ? null : (
@@ -215,25 +215,6 @@ function App() {
   );
 }
 
-type MetricProps = {
-  label: string;
-  value: string;
-};
-
-function Metric({ label, value }: MetricProps) {
-  const [primaryValue, detailValue] = value.split("\n", 2);
-
-  return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>
-        <span className="metric-value">{primaryValue}</span>
-        {detailValue ? <span className="metric-detail">{detailValue}</span> : null}
-      </strong>
-    </div>
-  );
-}
-
 type LimitMeterProps = {
   label: string;
   limit: {
@@ -245,22 +226,29 @@ type LimitMeterProps = {
 
 function LimitMeter({ label, limit }: LimitMeterProps) {
   const remainingPercent = limit.remainingPercent ?? 0;
-  const progressStyle = useMemo(
-    () => ({ width: `${Math.max(0, Math.min(100, remainingPercent))}%` }),
-    [remainingPercent]
-  );
   const progressTone = getProgressTone(remainingPercent);
+  const remainingLabel = formatPercent(limit.remainingPercent);
+  const resetLabel = formatCompactResetTimestamp(limit.resetAt);
+  const progressStroke = `${Math.max(0, Math.min(100, remainingPercent))} 100`;
 
   return (
     <div className="limit-meter">
-      <div className="limit-heading">
-        <span>{label}</span>
-        <strong>{formatPercent(limit.remainingPercent)} left</strong>
+      <div className="limit-dial" role="img" aria-label={`${label}: ${remainingLabel} remaining, resets ${resetLabel}`}>
+        <svg viewBox="0 0 76 76" aria-hidden="true">
+          <path className="dial-track" pathLength="100" d="M 18 57 A 28 28 0 1 1 58 57" />
+          <path
+            className={`dial-fill dial-fill--${progressTone}`}
+            pathLength="100"
+            d="M 18 57 A 28 28 0 1 1 58 57"
+            style={{ strokeDasharray: progressStroke }}
+          />
+        </svg>
+        <div className="dial-content">
+          <span className="dial-label">{label}</span>
+          <strong className="limit-remaining">{remainingLabel}</strong>
+        </div>
       </div>
-      <div className="progress-track" aria-label={`${label} ${formatPercent(limit.remainingPercent)} remaining`}>
-        <div className={`progress-fill progress-fill--${progressTone}`} style={progressStyle} />
-      </div>
-      <Metric label="Reset" value={formatResetTimestamp(limit.resetAt)} />
+      <span className="limit-reset">{resetLabel}</span>
     </div>
   );
 }

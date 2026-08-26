@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   commandPreview,
+  formatCompactResetTimestamp,
   formatPercent,
   formatResetTimestamp,
   resolveFiveHourLimit,
@@ -31,6 +32,13 @@ describe("usage formatters", () => {
     const now = new Date(2026, 5, 2, 9, 0);
 
     expect(formatResetTimestamp(resetAt, now)).toBe("2026-06-03 08:05 AM\n1 day remaining");
+  });
+
+  it("formats compact reset timestamps for a two-row meter", () => {
+    const now = new Date(2026, 5, 2, 9, 0);
+
+    expect(formatCompactResetTimestamp(new Date(2026, 5, 2, 15, 30).toISOString(), now)).toBe("03:30 PM");
+    expect(formatCompactResetTimestamp(new Date(2026, 5, 3, 8, 5).toISOString(), now)).toBe("Wed 08:05 AM");
   });
 
   it("clamps elapsed reset timestamps to zero remaining days", () => {

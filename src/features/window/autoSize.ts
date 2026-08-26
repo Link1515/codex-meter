@@ -2,14 +2,14 @@ import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef, type RefObject } from "react";
 import { setWindowSize, showWindow } from "./api";
 
-export const MIN_WINDOW_WIDTH = 280;
+export const MIN_WINDOW_WIDTH = 270;
 // This is the compact layout baseline. Taller content is measured at runtime so
 // platform font metrics and display scaling do not require permanent blank space.
-export const MIN_WINDOW_HEIGHT = 160;
+export const MIN_WINDOW_HEIGHT = 130;
 export const MAX_WINDOW_WIDTH = 420;
 export const MAX_WINDOW_HEIGHT = 360;
 const SIZE_CHANGE_THRESHOLD = 1;
-const CONTENT_SIZE_PADDING = 8;
+const CONTENT_WIDTH_PADDING = 8;
 const SETTLE_DELAY_MS = [80, 240, 600];
 
 type WindowSize = {
@@ -137,7 +137,7 @@ function createCompactProbe(content: HTMLElement): HTMLElement {
 export function resolveWindowSize(metrics: ContentSizeMetrics): WindowSize {
   const measuredWidth = safeMax(metrics.scrollWidth, metrics.boundingWidth);
   const measuredHeight = safeMax(metrics.scrollHeight, metrics.boundingHeight);
-  const nextWidth = expandWhenNeeded(measuredWidth, MIN_WINDOW_WIDTH);
+  const nextWidth = expandWhenNeeded(measuredWidth, MIN_WINDOW_WIDTH, CONTENT_WIDTH_PADDING);
   const nextHeight = expandWhenNeeded(measuredHeight, MIN_WINDOW_HEIGHT);
 
   return {
@@ -146,8 +146,8 @@ export function resolveWindowSize(metrics: ContentSizeMetrics): WindowSize {
   };
 }
 
-function expandWhenNeeded(measuredSize: number, compactSize: number): number {
-  return measuredSize > compactSize ? measuredSize + CONTENT_SIZE_PADDING : compactSize;
+function expandWhenNeeded(measuredSize: number, compactSize: number, padding = 0): number {
+  return measuredSize > compactSize ? measuredSize + padding : compactSize;
 }
 
 function safeMax(...values: number[]): number {

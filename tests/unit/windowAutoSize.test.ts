@@ -36,7 +36,7 @@ describe("window auto size", () => {
     });
   });
 
-  it("adds headroom when platform font metrics exceed the compact baseline", () => {
+  it("matches content height when platform font metrics exceed the compact baseline", () => {
     expect(
       resolveWindowSize({
         scrollWidth: MIN_WINDOW_WIDTH,
@@ -46,7 +46,7 @@ describe("window auto size", () => {
       })
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
-      height: MIN_WINDOW_HEIGHT + 9
+      height: MIN_WINDOW_HEIGHT + 1
     });
   });
 
@@ -60,7 +60,7 @@ describe("window auto size", () => {
       })
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
-      height: 247
+      height: 239
     });
   });
 

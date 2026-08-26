@@ -45,10 +45,10 @@ button {
 
 .app-content {
   width: 100%;
-  padding: 16px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
 }
 
 .window-header,
@@ -81,13 +81,6 @@ button {
   white-space: nowrap;
 }
 
-.metric-label,
-.metric > span {
-  color: #93a4b7;
-  font-size: 11px;
-  line-height: 1.35;
-}
-
 .window-actions {
   gap: 4px;
 }
@@ -117,105 +110,98 @@ button {
 .usage-panel {
   min-height: 0;
   width: 100%;
-  padding: 4px 0 0;
+  padding: 0;
   overflow: hidden;
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
 }
 
 .limit-meter {
-  padding: 0 0 16px;
-  border-bottom: 1px solid #243241;
   display: grid;
-  gap: 10px;
+  justify-items: center;
+  align-content: start;
+  row-gap: 4px;
+  min-width: 0;
 }
 
-.limit-meter + .limit-meter {
-  padding-top: 16px;
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.limit-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+.dial-label {
   color: #93a4b7;
   font-size: 11px;
   line-height: 1.35;
+  white-space: nowrap;
 }
 
-.limit-heading strong {
+.limit-remaining {
   color: #e8eef5;
-  font-size: 14px;
+  font-size: 18px;
   line-height: 1;
   white-space: nowrap;
 }
 
-.progress-track {
-  height: 7px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #1b2733;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: inherit;
-  transition:
-    width 160ms ease,
-    background-color 160ms ease;
-}
-
-.progress-fill--safe {
-  background: #3fbf7f;
-}
-
-.progress-fill--warning {
-  background: #f59e0b;
-}
-
-.progress-fill--danger {
-  background: #ef4444;
-}
-
-.usage-grid {
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.metric {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.metric strong {
-  color: #d9e4ef;
-  font-size: 13px;
-  line-height: 1.2;
-  text-align: right;
+.limit-dial {
+  width: 108px;
+  height: 108px;
+  position: relative;
   display: grid;
-  gap: 2px;
+  place-items: center;
 }
 
-.metric-value {
-  white-space: nowrap;
+.limit-dial svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(0deg);
 }
 
-.metric .metric-detail {
+.dial-track,
+.dial-fill {
+  fill: none;
+  stroke-width: 6.5;
+  stroke-linecap: round;
+}
+
+.dial-track {
+  stroke: #1b2733;
+}
+
+.dial-fill {
+  transition: stroke-dasharray 160ms ease;
+}
+
+.dial-fill--safe {
+  stroke: #3fbf7f;
+}
+
+.dial-fill--warning {
+  stroke: #f59e0b;
+}
+
+.dial-fill--danger {
+  stroke: #ef4444;
+}
+
+.dial-content {
+  position: absolute;
+  inset: 28px 8px 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.limit-reset {
   color: #93a4b7;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 10px;
   line-height: 1.35;
+  margin-top: -20px;
+  white-space: nowrap;
 }
 
 .status-line {
   min-height: 22px;
-  margin-top: 12px;
+  margin-top: 2px;
   padding: 0 0 0 8px;
   border-left: 2px solid #f97316;
   display: flex;
