@@ -124,8 +124,16 @@ button {
 }
 
 .limit-meter {
+  padding: 0 0 16px;
+  border-bottom: 1px solid #243241;
   display: grid;
   gap: 10px;
+}
+
+.limit-meter + .limit-meter {
+  padding-top: 16px;
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .limit-heading {

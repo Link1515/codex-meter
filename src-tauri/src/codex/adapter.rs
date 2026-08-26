@@ -401,24 +401,22 @@ fn snapshot_from_oauth_usage(value: serde_json::Value) -> io::Result<CodexUsageS
     snapshot.account_plan = response.plan_type;
 
     if let Some(rate_limit) = response.rate_limit {
-        if let Some(window) = rate_limit.secondary_window.or(rate_limit.primary_window) {
-            let weekly = limit_from_oauth_window(window);
-            snapshot.weekly_usage_limit = Some(weekly);
-        }
+        snapshot.five_hour_usage_limit = rate_limit.primary_window.map(limit_from_oauth_window);
+        snapshot.weekly_usage_limit = rate_limit.secondary_window.map(limit_from_oauth_window);
     }
 
     if let Some(rate_limits) = response.rate_limits {
-        if snapshot.weekly_usage_limit.is_none() {
-            if let Some(window) = rate_limits.secondary.or(rate_limits.primary) {
-                let weekly = limit_from_rpc_window(window);
-                snapshot.weekly_usage_limit = Some(weekly);
-            }
-        }
+        snapshot.five_hour_usage_limit = snapshot
+            .five_hour_usage_limit
+            .or_else(|| rate_limits.primary.map(limit_from_rpc_window));
+        snapshot.weekly_usage_limit = snapshot
+            .weekly_usage_limit
+            .or_else(|| rate_limits.secondary.map(limit_from_rpc_window));
 
         snapshot.account_plan = snapshot.account_plan.or(rate_limits.plan_type);
     }
 
-    if snapshot.weekly_usage_limit.is_none() {
+    if snapshot.five_hour_usage_limit.is_none() && snapshot.weekly_usage_limit.is_none() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "Codex OAuth usage response contained no rate limit windows",
@@ -446,21 +444,17 @@ fn snapshot_from_rate_limits(
         )
     })?;
 
-    let weekly_window = response
-        .rate_limits
-        .secondary
-        .or(response.rate_limits.primary)
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Codex app-server returned no weekly usage window",
-            )
-        })?;
+    let five_hour_window = response.rate_limits.primary.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Codex app-server returned no 5-hour usage window",
+        )
+    })?;
 
     let mut snapshot = CodexUsageSnapshot::with_status(UsageStatus::Ok, None);
     snapshot.fetched_at = current_timestamp();
-    let weekly = limit_from_rpc_window(weekly_window);
-    snapshot.weekly_usage_limit = Some(weekly);
+    snapshot.five_hour_usage_limit = Some(limit_from_rpc_window(five_hour_window));
+    snapshot.weekly_usage_limit = response.rate_limits.secondary.map(limit_from_rpc_window);
     snapshot.account_plan = response.rate_limits.plan_type.or_else(|| {
         account
             .and_then(|value| value.account)
@@ -785,6 +779,13 @@ mod tests {
         assert!(matches!(snapshot.status, UsageStatus::Ok));
         assert_eq!(
             snapshot
+                .five_hour_usage_limit
+                .as_ref()
+                .and_then(|limit| limit.remaining_percent),
+            Some(72.0)
+        );
+        assert_eq!(
+            snapshot
                 .weekly_usage_limit
                 .as_ref()
                 .and_then(|limit| limit.remaining_percent),
@@ -818,7 +819,7 @@ mod tests {
     }
 
     #[test]
-    fn maps_a_single_app_server_window_to_the_weekly_limit() {
+    fn maps_a_single_app_server_window_to_the_five_hour_limit() {
         let snapshot = snapshot_from_rate_limits(
             serde_json::json!({
                 "primary": {
@@ -832,7 +833,7 @@ mod tests {
 
         assert_eq!(
             snapshot
-                .weekly_usage_limit
+                .five_hour_usage_limit
                 .as_ref()
                 .and_then(|limit| limit.remaining_percent),
             Some(80.0)
@@ -860,6 +861,13 @@ mod tests {
         assert_eq!(snapshot.account_plan, Some("plus".to_string()));
         assert_eq!(
             snapshot
+                .five_hour_usage_limit
+                .as_ref()
+                .and_then(|limit| limit.usage_percent),
+            Some(28.0)
+        );
+        assert_eq!(
+            snapshot
                 .weekly_usage_limit
                 .as_ref()
                 .and_then(|limit| limit.usage_percent),
@@ -885,6 +893,13 @@ mod tests {
         .expect("OAuth rateLimits response should parse");
 
         assert_eq!(snapshot.account_plan, Some("team".to_string()));
+        assert_eq!(
+            snapshot
+                .five_hour_usage_limit
+                .as_ref()
+                .and_then(|limit| limit.remaining_percent),
+            Some(88.0)
+        );
         assert_eq!(
             snapshot
                 .weekly_usage_limit

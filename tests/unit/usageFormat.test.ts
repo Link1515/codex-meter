@@ -3,6 +3,7 @@ import {
   commandPreview,
   formatPercent,
   formatResetTimestamp,
+  resolveFiveHourLimit,
   resolveWeeklyLimit,
   statusLabel
 } from "../../src/features/usage/format";
@@ -66,6 +67,21 @@ describe("usage formatters", () => {
       usagePercent: 45,
       remainingPercent: 55,
       resetAt: "weekly-reset"
+    });
+  });
+
+  it("resolves the 5-hour limit from the snapshot", () => {
+    const snapshot: CodexUsageSnapshot = {
+      source: "codex-cli",
+      fetchedAt: "0",
+      fiveHourUsageLimit: { usagePercent: 28, remainingPercent: 72, resetAt: "five-hour-reset" },
+      status: "ok"
+    };
+
+    expect(resolveFiveHourLimit(snapshot)).toEqual({
+      usagePercent: 28,
+      remainingPercent: 72,
+      resetAt: "five-hour-reset"
     });
   });
 

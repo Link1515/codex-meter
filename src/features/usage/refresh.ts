@@ -59,6 +59,8 @@ export function isRetryableRefreshStatus(snapshot: CodexUsageSnapshot): boolean 
 
 function hasDisplayableUsage(snapshot: CodexUsageSnapshot): boolean {
   return (
+    snapshot.fiveHourUsageLimit?.usagePercent !== undefined ||
+    snapshot.fiveHourUsageLimit?.remainingPercent !== undefined ||
     snapshot.weeklyUsageLimit?.usagePercent !== undefined ||
     snapshot.weeklyUsageLimit?.remainingPercent !== undefined
   );

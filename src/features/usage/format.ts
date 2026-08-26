@@ -117,3 +117,11 @@ export function resolveWeeklyLimit(snapshot: CodexUsageSnapshot): UsageLimitSnap
     resetAt: snapshot.weeklyUsageLimit?.resetAt
   };
 }
+
+export function resolveFiveHourLimit(snapshot: CodexUsageSnapshot): UsageLimitSnapshot {
+  return {
+    usagePercent: snapshot.fiveHourUsageLimit?.usagePercent,
+    remainingPercent: snapshot.fiveHourUsageLimit?.remainingPercent,
+    resetAt: snapshot.fiveHourUsageLimit?.resetAt
+  };
+}
