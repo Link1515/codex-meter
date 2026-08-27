@@ -122,7 +122,6 @@ button {
   display: grid;
   justify-items: center;
   align-content: start;
-  padding-block-end: var(--reset-visual-offset);
   row-gap: 4px;
   min-width: 0;
 }
@@ -197,10 +196,13 @@ button {
   color: #93a4b7;
   font-size: 10px;
   line-height: 1.35;
-  margin-top: 0;
+  /*
+   * The overlap is part of the meter's layout, not only its paint position.
+   * This lets the adaptive window measurement use the reset label's visual
+   * bottom edge instead of reserving empty space for a translated element.
+   */
+  margin-top: calc(0px - var(--reset-visual-offset));
   text-align: center;
-  /* Keep the label in normal flow for sizing, then restore its compact visual offset. */
-  transform: translateY(calc(0px - var(--reset-visual-offset)));
   white-space: pre-line;
 }
 
