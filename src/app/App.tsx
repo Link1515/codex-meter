@@ -228,24 +228,27 @@ function LimitMeter({ label, limit, showResetDate = false }: LimitMeterProps) {
     typeof limit.remainingPercent === "number" && Number.isFinite(limit.remainingPercent)
       ? limit.remainingPercent
       : 0;
-  const progressTone = getProgressTone(remainingPercent);
+  const normalizedRemainingPercent = Math.max(0, Math.min(100, remainingPercent));
+  const progressTone = getProgressTone(normalizedRemainingPercent);
   const remainingLabel = formatPercent(limit.remainingPercent);
   const resetLabel = showResetDate
     ? formatDatedResetTimestamp(limit.resetAt)
     : formatCompactResetTimestamp(limit.resetAt);
-  const progressStroke = `${Math.max(0, Math.min(100, remainingPercent))} 100`;
+  const progressStroke = `${normalizedRemainingPercent} 100`;
 
   return (
     <div className="limit-meter">
       <div className="limit-dial" role="img" aria-label={`${label}: ${remainingLabel} remaining, resets ${resetLabel}`}>
         <svg viewBox="0 0 76 76" aria-hidden="true">
           <path className="dial-track" pathLength="100" d="M 18 57 A 28 28 0 1 1 58 57" />
-          <path
-            className={`dial-fill dial-fill--${progressTone}`}
-            pathLength="100"
-            d="M 18 57 A 28 28 0 1 1 58 57"
-            style={{ strokeDasharray: progressStroke }}
-          />
+          {normalizedRemainingPercent > 0 ? (
+            <path
+              className={`dial-fill dial-fill--${progressTone}`}
+              pathLength="100"
+              d="M 18 57 A 28 28 0 1 1 58 57"
+              style={{ strokeDasharray: progressStroke }}
+            />
+          ) : null}
         </svg>
         <div className="dial-content">
           <span className="dial-label">{label}</span>
