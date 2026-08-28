@@ -17,9 +17,6 @@ importers:
       lucide-react:
         specifier: ^1.34.0
         version: 1.34.0(react@19.2.8)
-      pathe:
-        specifier: ^2.0.3
-        version: 2.0.3
       react:
         specifier: ^19.2.8
         version: 19.2.8

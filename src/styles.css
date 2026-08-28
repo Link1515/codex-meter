@@ -52,7 +52,6 @@ button {
 }
 
 .window-header,
-.usage-grid,
 .window-actions {
   display: flex;
   align-items: center;
@@ -66,11 +65,6 @@ button {
 
 .drag-region {
   min-width: 0;
-}
-
-.title-stack {
-  display: flex;
-  align-items: center;
 }
 
 .app-title {

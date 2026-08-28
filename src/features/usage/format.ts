@@ -1,48 +1,7 @@
-import { devMockCommandAlias } from "./defaults";
-import type { CliUsageConfig, CodexUsageSnapshot, UsageLimitSnapshot, UsageStatus } from "./types";
+import type { CodexUsageSnapshot, UsageStatus } from "./types";
 
 export function formatPercent(value: number | undefined): string {
-  return typeof value === "number" ? `${Math.round(value)}%` : "--";
-}
-
-export function formatTimestamp(value: string): string {
-  if (!value) {
-    return "Never";
-  }
-
-  const epochSeconds = Number(value);
-  const date = Number.isFinite(epochSeconds) ? new Date(epochSeconds * 1000) : new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
-  }).format(date);
-}
-
-export function formatResetTimestamp(value: string | undefined, now = new Date()): string {
-  if (!value) {
-    return "--";
-  }
-
-  const date = parseTimestamp(value);
-
-  if (!date) {
-    return value;
-  }
-
-  const time = formatTwelveHourTime(date);
-  const remainingDays = formatRemainingDays(date, now);
-
-  if (isSameLocalDay(date, now)) {
-    return `${time}\n${remainingDays}`;
-  }
-
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${time}\n${remainingDays}`;
+  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value)}%` : "--";
 }
 
 export function formatCompactResetTimestamp(value: string | undefined, now = new Date()): string {
@@ -114,14 +73,6 @@ function isSameLocalDay(left: Date, right: Date): boolean {
   );
 }
 
-function formatRemainingDays(resetAt: Date, now: Date): string {
-  const millisecondsPerDay = 24 * 60 * 60 * 1000;
-  const remainingMilliseconds = Math.max(0, resetAt.getTime() - now.getTime());
-  const days = Math.ceil(remainingMilliseconds / millisecondsPerDay);
-
-  return `${days} day${days === 1 ? "" : "s"} remaining`;
-}
-
 function shortWeekday(date: Date): string {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()];
 }
@@ -136,28 +87,4 @@ export function snapshotMessage(snapshot: CodexUsageSnapshot): string {
   }
 
   return snapshot.errorMessage ?? statusLabel(snapshot.status);
-}
-
-export function commandPreview(config: CliUsageConfig): string {
-  if (config.codexCommand === devMockCommandAlias) {
-    return "mock codex usage";
-  }
-
-  return [config.codexCommand, ...config.usageArgs].join(" ");
-}
-
-export function resolveWeeklyLimit(snapshot: CodexUsageSnapshot): UsageLimitSnapshot {
-  return {
-    usagePercent: snapshot.weeklyUsageLimit?.usagePercent,
-    remainingPercent: snapshot.weeklyUsageLimit?.remainingPercent,
-    resetAt: snapshot.weeklyUsageLimit?.resetAt
-  };
-}
-
-export function resolveFiveHourLimit(snapshot: CodexUsageSnapshot): UsageLimitSnapshot {
-  return {
-    usagePercent: snapshot.fiveHourUsageLimit?.usagePercent,
-    remainingPercent: snapshot.fiveHourUsageLimit?.remainingPercent,
-    resetAt: snapshot.fiveHourUsageLimit?.resetAt
-  };
 }

@@ -9,8 +9,6 @@ import {
   formatDatedResetTimestamp,
   formatPercent,
   formatCompactResetTimestamp,
-  resolveFiveHourLimit,
-  resolveWeeklyLimit,
   snapshotMessage
 } from "../features/usage/format";
 import {
@@ -39,8 +37,8 @@ function App() {
   const snapshotRef = useRef(usageState.snapshot);
 
   const snapshot = usageState.snapshot;
-  const fiveHourLimit = resolveFiveHourLimit(snapshot);
-  const weeklyLimit = resolveWeeklyLimit(snapshot);
+  const fiveHourLimit = snapshot.fiveHourUsageLimit ?? {};
+  const weeklyLimit = snapshot.weeklyUsageLimit ?? {};
   useAutoWindowSize(contentRef);
 
   useEffect(() => {
@@ -173,6 +171,8 @@ function App() {
       const nextState = { isPinned: nextPinned, updatedAt: new Date().toISOString() };
       savePinState(nextState);
       setPinState(nextState);
+    } catch {
+      // Keep the persisted state unchanged when window control fails.
     } finally {
       setPinBusy(false);
     }
@@ -182,9 +182,7 @@ function App() {
     <DragRegion className="app-shell" element="main" onDragComplete={saveCurrentPlacement}>
       <div className="app-content" ref={contentRef}>
         <header className="window-header">
-          <div className="title-stack">
-            <span className="app-title">Codex Meter</span>
-          </div>
+          <span className="app-title">Codex Meter</span>
           <div className="window-actions">
             <button
               className="icon-button"
@@ -220,14 +218,16 @@ type LimitMeterProps = {
   label: string;
   showResetDate?: boolean;
   limit: {
-    usagePercent?: number;
     remainingPercent?: number;
     resetAt?: string;
   };
 };
 
 function LimitMeter({ label, limit, showResetDate = false }: LimitMeterProps) {
-  const remainingPercent = limit.remainingPercent ?? 0;
+  const remainingPercent =
+    typeof limit.remainingPercent === "number" && Number.isFinite(limit.remainingPercent)
+      ? limit.remainingPercent
+      : 0;
   const progressTone = getProgressTone(remainingPercent);
   const remainingLabel = formatPercent(limit.remainingPercent);
   const resetLabel = showResetDate
