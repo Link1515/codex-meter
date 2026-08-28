@@ -45,7 +45,7 @@ describe("usage formatters", () => {
   it("formats dated reset timestamps for the weekly meter", () => {
     const resetAt = new Date(2026, 5, 3, 8, 5).toISOString();
 
-    expect(formatDatedResetTimestamp(resetAt)).toBe("2026-06-03 (Wed)\n08:05 AM");
+    expect(formatDatedResetTimestamp(resetAt)).toBe("2026-06-03 · Wed\n08:05 AM");
   });
 
   it("clamps elapsed reset timestamps to zero remaining days", () => {

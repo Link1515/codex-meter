@@ -74,7 +74,7 @@ export function formatDatedResetTimestamp(value: string | undefined): string {
     return value;
   }
 
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} (${shortWeekday(date)})\n${formatTwelveHourTime(date)}`;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} · ${shortWeekday(date)}\n${formatTwelveHourTime(date)}`;
 }
 
 export function statusLabel(status: UsageStatus): string {
