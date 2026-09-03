@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DragRegion } from "../components/DragRegion";
 import { PinButton } from "../components/PinButton";
 import { fetchUsage } from "../features/usage/api";
-import { loadUsageConfig, loadCachedSnapshot, saveCachedSnapshot } from "../features/usage/storage";
+import { defaultUsageConfig } from "../features/usage/defaults";
+import { loadCachedSnapshot, saveCachedSnapshot } from "../features/usage/storage";
 import type { CodexUsageSnapshot, UsageViewState } from "../features/usage/types";
 import {
   formatDatedResetTimestamp,
@@ -23,7 +24,7 @@ import type { WindowPinState } from "../features/window/types";
 
 function App() {
   const contentRef = useRef<HTMLDivElement>(null);
-  const [config] = useState(loadUsageConfig);
+  const config = defaultUsageConfig;
   const [usageState, setUsageState] = useState<UsageViewState>({
     kind: "idle",
     snapshot: loadCachedSnapshot()

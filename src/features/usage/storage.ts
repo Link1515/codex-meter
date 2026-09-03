@@ -1,46 +1,7 @@
-import {
-  defaultUsageConfig,
-  devMockUsageConfig,
-  emptySnapshot,
-  legacyAppServerUsageConfig,
-  legacyStatusUsageConfig
-} from "./defaults";
-import type { CliUsageConfig, CodexUsageSnapshot } from "./types";
+import { emptySnapshot } from "./defaults";
+import type { CodexUsageSnapshot } from "./types";
 
-const configKey = "codex-meter:usage-config";
 const snapshotKey = "codex-meter:last-snapshot";
-
-export function loadUsageConfig(): CliUsageConfig {
-  const raw = localStorage.getItem(configKey);
-  if (!raw) {
-    return defaultUsageConfig;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<CliUsageConfig>;
-    const config = {
-      ...defaultUsageConfig,
-      ...parsed,
-      usageArgs: Array.isArray(parsed.usageArgs) ? parsed.usageArgs : defaultUsageConfig.usageArgs
-    };
-
-    if (
-      isLegacyUsageConfig(config) ||
-      isLegacyAppServerUsageConfig(config) ||
-      (import.meta.env.DEV && isDevMockUsageConfig(config))
-    ) {
-      return defaultUsageConfig;
-    }
-
-    return config;
-  } catch {
-    return defaultUsageConfig;
-  }
-}
-
-export function saveUsageConfig(config: CliUsageConfig): void {
-  localStorage.setItem(configKey, JSON.stringify(config));
-}
 
 export function loadCachedSnapshot(): CodexUsageSnapshot {
   const raw = localStorage.getItem(snapshotKey);
@@ -58,26 +19,4 @@ export function loadCachedSnapshot(): CodexUsageSnapshot {
 export function saveCachedSnapshot(snapshot: CodexUsageSnapshot): void {
   const { rawOutput: _rawOutput, ...cacheableSnapshot } = snapshot;
   localStorage.setItem(snapshotKey, JSON.stringify(cacheableSnapshot));
-}
-
-function isDevMockUsageConfig(config: CliUsageConfig): boolean {
-  return sameCommandConfig(config, devMockUsageConfig);
-}
-
-function isLegacyUsageConfig(config: CliUsageConfig): boolean {
-  return sameCommandConfig(config, legacyStatusUsageConfig);
-}
-
-function isLegacyAppServerUsageConfig(config: CliUsageConfig): boolean {
-  return sameCommandConfig(config, legacyAppServerUsageConfig);
-}
-
-function sameCommandConfig(config: CliUsageConfig, expected: CliUsageConfig): boolean {
-  return (
-    config.codexCommand === expected.codexCommand &&
-    config.timeoutSeconds === expected.timeoutSeconds &&
-    config.parserMode === expected.parserMode &&
-    config.usageArgs.length === expected.usageArgs.length &&
-    config.usageArgs.every((arg, index) => arg === expected.usageArgs[index])
-  );
 }
