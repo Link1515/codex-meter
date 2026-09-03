@@ -35,7 +35,6 @@ pub enum UsageStatus {
 pub struct CodexUsageSnapshot {
     pub source: String,
     pub fetched_at: String,
-    pub raw_output: Option<String>,
     pub five_hour_usage_limit: Option<UsageLimitSnapshot>,
     pub weekly_usage_limit: Option<UsageLimitSnapshot>,
     pub account_plan: Option<String>,
@@ -100,7 +99,6 @@ impl CodexUsageSnapshot {
         Self {
             source: "codex-cli".to_string(),
             fetched_at: current_timestamp(),
-            raw_output: None,
             five_hour_usage_limit: None,
             weekly_usage_limit: None,
             account_plan: None,

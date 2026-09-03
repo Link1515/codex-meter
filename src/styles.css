@@ -227,10 +227,6 @@ button {
   background: #748397;
 }
 
-.status-ok .status-dot {
-  background: #3fbf7f;
-}
-
 .status-cli_not_found .status-dot,
 .status-not_authenticated .status-dot,
 .status-timeout .status-dot,

@@ -62,7 +62,6 @@ Implemented:
 - Text parser and JSON parser.
 - Codex `app-server` RPC probe for `account/rateLimits/read`.
 - OAuth usage probe using the local Codex auth file, preferred for the default app-server configuration; app-server RPC is the fallback.
-- Backend `test_cli_command` command for a future settings UI; it returns sanitized stdout/stderr summaries and a parser result.
 - Mock CLI in `dev/mock-codex-cli`.
 - Unit tests for usage refresh/storage/format, pin state, auto-sizing, parser behavior, adapter helpers, and placement correction.
 
@@ -175,7 +174,6 @@ Command::new(command).args(args)
   - refresh tokens
   - sessions
 - Use the existing sanitization path before showing command errors.
-- Cached snapshots must not persist `rawOutput`.
 - Raw CLI output should remain hidden unless a future explicit debug setting enables it.
 - Do not read browser cookies or automate browser pages.
 - Do not modify Codex CLI internals.

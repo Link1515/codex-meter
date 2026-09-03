@@ -26,7 +26,6 @@ export function mergeUsageRefreshResult(
     ...previousSnapshot,
     source: nextSnapshot.source,
     fetchedAt: nextSnapshot.fetchedAt,
-    rawOutput: nextSnapshot.rawOutput,
     status: nextSnapshot.status,
     errorMessage: nextSnapshot.errorMessage
   };

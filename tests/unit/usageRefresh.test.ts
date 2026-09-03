@@ -36,7 +36,6 @@ describe("usage refresh controls", () => {
     expect(mergeUsageRefreshResult(previous, next)).toEqual({
       ...previous,
       fetchedAt: "101",
-      rawOutput: undefined,
       status: "timeout",
       errorMessage: "Codex CLI command timed out"
     });

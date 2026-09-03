@@ -17,6 +17,5 @@ export function loadCachedSnapshot(): CodexUsageSnapshot {
 }
 
 export function saveCachedSnapshot(snapshot: CodexUsageSnapshot): void {
-  const { rawOutput: _rawOutput, ...cacheableSnapshot } = snapshot;
-  localStorage.setItem(snapshotKey, JSON.stringify(cacheableSnapshot));
+  localStorage.setItem(snapshotKey, JSON.stringify(snapshot));
 }
