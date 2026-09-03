@@ -139,7 +139,7 @@ The current default frontend config is:
 ```ts
 {
   codexCommand: "codex",
-  usageArgs: ["-s", "read-only", "-a", "untrusted", "app-server"],
+  usageArgs: ["-s", "read-only", "-a", "never", "app-server"],
   pollIntervalSeconds: 60,
   timeoutSeconds: 10,
   parserMode: "Json"

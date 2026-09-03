@@ -10,7 +10,7 @@ describe("usage config storage", () => {
 
     expect(loadUsageConfig()).toMatchObject({
       codexCommand: "codex",
-      usageArgs: ["-s", "read-only", "-a", "untrusted", "app-server"],
+      usageArgs: ["-s", "read-only", "-a", "never", "app-server"],
       pollIntervalSeconds: 60
     });
 
@@ -31,7 +31,27 @@ describe("usage config storage", () => {
 
     expect(loadUsageConfig()).toMatchObject({
       codexCommand: "codex",
-      usageArgs: ["-s", "read-only", "-a", "untrusted", "app-server"]
+      usageArgs: ["-s", "read-only", "-a", "never", "app-server"]
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it("migrates the obsolete app-server approval policy", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn(() => JSON.stringify({
+        codexCommand: "codex",
+        usageArgs: ["-s", "read-only", "-a", "untrusted", "app-server"],
+        pollIntervalSeconds: 60,
+        timeoutSeconds: 10,
+        parserMode: "Json"
+      })),
+      setItem: vi.fn()
+    });
+
+    expect(loadUsageConfig()).toMatchObject({
+      codexCommand: "codex",
+      usageArgs: ["-s", "read-only", "-a", "never", "app-server"]
     });
 
     vi.unstubAllGlobals();

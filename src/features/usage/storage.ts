@@ -1,4 +1,10 @@
-import { defaultUsageConfig, devMockUsageConfig, emptySnapshot, legacyStatusUsageConfig } from "./defaults";
+import {
+  defaultUsageConfig,
+  devMockUsageConfig,
+  emptySnapshot,
+  legacyAppServerUsageConfig,
+  legacyStatusUsageConfig
+} from "./defaults";
 import type { CliUsageConfig, CodexUsageSnapshot } from "./types";
 
 const configKey = "codex-meter:usage-config";
@@ -18,7 +24,11 @@ export function loadUsageConfig(): CliUsageConfig {
       usageArgs: Array.isArray(parsed.usageArgs) ? parsed.usageArgs : defaultUsageConfig.usageArgs
     };
 
-    if (isLegacyUsageConfig(config) || (import.meta.env.DEV && isDevMockUsageConfig(config))) {
+    if (
+      isLegacyUsageConfig(config) ||
+      isLegacyAppServerUsageConfig(config) ||
+      (import.meta.env.DEV && isDevMockUsageConfig(config))
+    ) {
       return defaultUsageConfig;
     }
 
@@ -56,6 +66,10 @@ function isDevMockUsageConfig(config: CliUsageConfig): boolean {
 
 function isLegacyUsageConfig(config: CliUsageConfig): boolean {
   return sameCommandConfig(config, legacyStatusUsageConfig);
+}
+
+function isLegacyAppServerUsageConfig(config: CliUsageConfig): boolean {
+  return sameCommandConfig(config, legacyAppServerUsageConfig);
 }
 
 function sameCommandConfig(config: CliUsageConfig, expected: CliUsageConfig): boolean {

@@ -193,13 +193,7 @@ fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageS
         }
     });
 
-    let (stderr_tx, stderr_rx) = mpsc::channel::<String>();
-    thread::spawn(move || {
-        let reader = BufReader::new(stderr);
-        for line in reader.lines().map_while(Result::ok) {
-            let _ = stderr_tx.send(line);
-        }
-    });
+    let stderr_reader = thread::spawn(move || read_process_output(stderr));
 
     let rpc_result = (|| -> io::Result<CodexUsageSnapshot> {
         send_rpc_request(
@@ -230,21 +224,24 @@ fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageS
 
     let _ = child.kill();
     let _ = child.wait();
+    let stderr = join_process_output(stderr_reader).unwrap_or_default();
 
-    match rpc_result {
-        Ok(snapshot) => Ok(snapshot),
-        Err(error) => {
-            if error.kind() == io::ErrorKind::Other {
-                if let Ok(stderr_line) = stderr_rx.try_recv() {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        sanitize_message(&stderr_line),
-                    ));
-                }
-            }
-            Err(error)
-        }
+    rpc_result.map_err(|error| app_server_error_with_stderr(error, &stderr))
+}
+
+fn app_server_error_with_stderr(error: io::Error, stderr: &str) -> io::Error {
+    if stderr.trim().is_empty() {
+        return error;
     }
+
+    io::Error::new(
+        error.kind(),
+        format!(
+            "{}: {}",
+            error,
+            sanitize_message(&summary_text(stderr, ""))
+        ),
+    )
 }
 
 fn send_rpc_request(
@@ -761,9 +758,11 @@ pub fn sanitize_message(message: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+
     use super::{
-        fetch_codex_usage, is_app_server_rpc_config, snapshot_from_oauth_usage,
-        snapshot_from_rate_limits, summary_text, DEV_MOCK_COMMAND_ALIAS,
+        app_server_error_with_stderr, fetch_codex_usage, is_app_server_rpc_config,
+        snapshot_from_oauth_usage, snapshot_from_rate_limits, summary_text, DEV_MOCK_COMMAND_ALIAS,
     };
     use crate::codex::types::{CliUsageConfig, ParserMode, UsageStatus};
 
@@ -816,6 +815,20 @@ mod tests {
         };
 
         assert!(is_app_server_rpc_config(&config));
+    }
+
+    #[test]
+    fn includes_app_server_stderr_when_stdout_closes() {
+        let error = app_server_error_with_stderr(
+            io::Error::new(io::ErrorKind::UnexpectedEof, "Codex app-server closed stdout"),
+            "error: invalid value 'untrusted' for '--ask-for-approval'",
+        );
+
+        assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+        assert_eq!(
+            error.to_string(),
+            "Codex app-server closed stdout: error: invalid value 'untrusted' for '--ask-for-approval'"
+        );
     }
 
     #[test]
