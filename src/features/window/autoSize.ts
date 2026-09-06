@@ -3,9 +3,10 @@ import { useEffect, useRef, type RefObject } from "react";
 import { setWindowSize, showWindow } from "./api";
 
 export const MIN_WINDOW_WIDTH = 270;
-// This is the compact layout baseline. Taller content is measured at runtime so
-// platform font metrics and display scaling do not require permanent blank space.
-export const MIN_WINDOW_HEIGHT = 130;
+// The weekly reset label always uses two lines. Reserve that complete baseline
+// so a clipped second line can never be mistaken for shorter content at a
+// different display scale; taller content is still measured at runtime.
+export const MIN_WINDOW_HEIGHT = 232;
 export const MAX_WINDOW_WIDTH = 420;
 export const MAX_WINDOW_HEIGHT = 360;
 const SIZE_CHANGE_THRESHOLD = 1;
