@@ -3,10 +3,10 @@ import { useEffect, useRef, type RefObject } from "react";
 import { setWindowSize, showWindow } from "./api";
 
 export const MIN_WINDOW_WIDTH = 270;
-// The weekly reset label always uses two lines. Reserve that complete baseline
-// so a clipped second line can never be mistaken for shorter content at a
-// different display scale; taller content is still measured at runtime.
-export const MIN_WINDOW_HEIGHT = 232;
+// This lower bound is used only while the hidden window is starting. The final
+// height comes from rendered content, which varies with font metrics and
+// display scaling.
+export const MIN_WINDOW_HEIGHT = 130;
 export const MAX_WINDOW_WIDTH = 420;
 export const MAX_WINDOW_HEIGHT = 360;
 const SIZE_CHANGE_THRESHOLD = 1;
@@ -24,6 +24,8 @@ type ContentSizeMetrics = {
   scrollHeight: number;
   boundingWidth: number;
   boundingHeight: number;
+  visualWidth?: number;
+  visualHeight?: number;
 };
 
 export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): void {
@@ -110,11 +112,28 @@ function measureWindowSize(content: HTMLElement): WindowSize {
       scrollWidth: compactProbe.scrollWidth,
       scrollHeight: compactProbe.scrollHeight,
       boundingWidth: rect.width,
-      boundingHeight: rect.height
+      boundingHeight: rect.height,
+      ...measureVisualExtent(compactProbe, rect)
     });
   } finally {
     compactProbe.remove();
   }
+}
+
+function measureVisualExtent(probe: HTMLElement, probeRect: DOMRect): Pick<ContentSizeMetrics, "visualWidth" | "visualHeight"> {
+  let visualRight = probeRect.right;
+  let visualBottom = probeRect.bottom;
+
+  probe.querySelectorAll<HTMLElement>("*").forEach((element) => {
+    const rect = element.getBoundingClientRect();
+    visualRight = Math.max(visualRight, rect.right);
+    visualBottom = Math.max(visualBottom, rect.bottom);
+  });
+
+  return {
+    visualWidth: visualRight - probeRect.left,
+    visualHeight: visualBottom - probeRect.top
+  };
 }
 
 function createCompactProbe(content: HTMLElement): HTMLElement {
@@ -137,8 +156,8 @@ function createCompactProbe(content: HTMLElement): HTMLElement {
 }
 
 export function resolveWindowSize(metrics: ContentSizeMetrics): WindowSize {
-  const measuredWidth = safeMax(metrics.scrollWidth, metrics.boundingWidth);
-  const measuredHeight = safeMax(metrics.scrollHeight, metrics.boundingHeight);
+  const measuredWidth = safeMax(metrics.scrollWidth, metrics.boundingWidth, metrics.visualWidth);
+  const measuredHeight = safeMax(metrics.scrollHeight, metrics.boundingHeight, metrics.visualHeight);
   const nextWidth = expandWhenNeeded(measuredWidth, MIN_WINDOW_WIDTH, CONTENT_WIDTH_PADDING);
   const nextHeight = expandWhenNeeded(measuredHeight, MIN_WINDOW_HEIGHT, CONTENT_HEIGHT_PADDING);
 

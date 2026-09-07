@@ -8,7 +8,7 @@ import {
 } from "../../src/features/window/autoSize";
 
 describe("window auto size", () => {
-  it("keeps the safe compact minimum when content fits", () => {
+  it("keeps the hidden-startup minimum when content fits", () => {
     expect(
       resolveWindowSize({
         scrollWidth: MIN_WINDOW_WIDTH,
@@ -33,6 +33,36 @@ describe("window auto size", () => {
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
       height: MIN_WINDOW_HEIGHT
+    });
+  });
+
+  it("uses the measured content height instead of a fixed two-line label reserve", () => {
+    expect(
+      resolveWindowSize({
+        scrollWidth: MIN_WINDOW_WIDTH,
+        scrollHeight: 208,
+        boundingWidth: MIN_WINDOW_WIDTH,
+        boundingHeight: 208
+      })
+    ).toEqual({
+      width: MIN_WINDOW_WIDTH,
+      height: 212
+    });
+  });
+
+  it("includes descendants whose painted bounds extend past their container", () => {
+    expect(
+      resolveWindowSize({
+        scrollWidth: MIN_WINDOW_WIDTH,
+        scrollHeight: 190,
+        boundingWidth: MIN_WINDOW_WIDTH,
+        boundingHeight: 190,
+        visualWidth: MIN_WINDOW_WIDTH,
+        visualHeight: 218
+      })
+    ).toEqual({
+      width: MIN_WINDOW_WIDTH,
+      height: 222
     });
   });
 
