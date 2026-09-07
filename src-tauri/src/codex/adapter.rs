@@ -41,7 +41,7 @@ pub fn fetch_codex_usage(config: &CliUsageConfig) -> CodexUsageSnapshot {
     }
 
     let result = if should_try_oauth_usage(config) {
-        fetch_oauth_usage().or_else(|_| fetch_app_server_rpc_usage(config))
+        fetch_oauth_usage(config).or_else(|_| fetch_app_server_rpc_usage(config))
     } else if is_app_server_rpc_config(config) {
         fetch_app_server_rpc_usage(config)
     } else {
@@ -87,11 +87,12 @@ fn is_authentication_error(message: &str) -> bool {
         || lower.contains("please log in")
 }
 
-fn fetch_oauth_usage() -> io::Result<CodexUsageSnapshot> {
+fn fetch_oauth_usage(config: &CliUsageConfig) -> io::Result<CodexUsageSnapshot> {
     let access_token = read_codex_access_token()?;
     let client = oauth_usage_client()?;
     let response = client
         .get("https://chatgpt.com/backend-api/wham/usage")
+        .timeout(oauth_request_timeout(config))
         .bearer_auth(access_token)
         .send()
         .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
@@ -124,7 +125,6 @@ fn oauth_usage_client() -> io::Result<&'static reqwest::blocking::Client> {
     }
 
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(10))
         .user_agent(format!("codex-meter/{}", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
@@ -136,6 +136,10 @@ fn oauth_usage_client() -> io::Result<&'static reqwest::blocking::Client> {
             "Codex OAuth usage client was unavailable after initialization",
         )
     })
+}
+
+fn oauth_request_timeout(config: &CliUsageConfig) -> Duration {
+    Duration::from_secs(config.timeout_seconds.max(1))
 }
 
 fn read_codex_access_token() -> io::Result<String> {
@@ -776,12 +780,12 @@ pub fn sanitize_message(message: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::io;
+    use std::{io, time::Duration};
 
     use super::{
         app_server_error_with_stderr, fetch_codex_usage, is_app_server_rpc_config,
-        oauth_usage_client, snapshot_from_oauth_usage, snapshot_from_rate_limits, summary_text,
-        DEV_MOCK_COMMAND_ALIAS,
+        oauth_request_timeout, oauth_usage_client, snapshot_from_oauth_usage,
+        snapshot_from_rate_limits, summary_text, DEV_MOCK_COMMAND_ALIAS,
     };
     use crate::codex::types::{CliUsageConfig, ParserMode, UsageStatus};
 
@@ -817,6 +821,18 @@ mod tests {
         let second = oauth_usage_client().expect("OAuth client should remain available");
 
         assert!(std::ptr::eq(first, second));
+    }
+
+    #[test]
+    fn uses_the_configured_oauth_request_timeout() {
+        let config = CliUsageConfig {
+            codex_command: "codex".to_string(),
+            usage_args: vec!["app-server".to_string()],
+            timeout_seconds: 45,
+            parser_mode: ParserMode::Json,
+        };
+
+        assert_eq!(oauth_request_timeout(&config), Duration::from_secs(45));
     }
 
     #[test]
