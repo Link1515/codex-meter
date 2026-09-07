@@ -3,6 +3,7 @@ import {
   configurationRetryDelayMs,
   minimumAutomaticRefreshDelayMs,
   nextAutomaticRefreshDelayMs,
+  nextUsagePollingCheckDelayMs,
   retryBackoffMaxMs,
   canStartManualRefresh,
   mergeUsageRefreshResult
@@ -74,6 +75,12 @@ describe("usage refresh controls", () => {
 
   it("slows down automatic refresh for configuration and authentication states", () => {
     expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("not_authenticated"), 60, 1)).toBe(configurationRetryDelayMs);
+  });
+
+  it("rechecks hidden windows at the minimum interval without using the usage retry delay", () => {
+    expect(nextUsagePollingCheckDelayMs(snapshotWithStatus("unknown"), 60, 0, false)).toBe(
+      minimumAutomaticRefreshDelayMs
+    );
   });
 });
 

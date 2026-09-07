@@ -17,7 +17,7 @@ import {
 import {
   canStartManualRefresh,
   mergeUsageRefreshResult,
-  nextAutomaticRefreshDelayMs
+  nextUsagePollingCheckDelayMs
 } from "../features/usage/refresh";
 import {
   getAlwaysOnTop,
@@ -171,16 +171,22 @@ function App() {
   }, [refreshUsage]);
 
   useEffect(() => {
-    if (!isWindowPollingAllowed || usageState.kind === "loading") {
+    if (usageState.kind === "loading") {
       return;
     }
 
-    const delayMs = nextAutomaticRefreshDelayMs(
-      snapshot,
-      config.pollIntervalSeconds,
-      consecutiveRefreshFailureCount.current
-    );
-    const timeoutId = window.setTimeout(() => {
+    let isActive = true;
+    let timeoutId: number | undefined;
+    const schedulePollingCheck = (isAllowed: boolean) => {
+      const delayMs = nextUsagePollingCheckDelayMs(
+        snapshot,
+        config.pollIntervalSeconds,
+        consecutiveRefreshFailureCount.current,
+        isAllowed
+      );
+      timeoutId = window.setTimeout(runPollingCheck, delayMs);
+    };
+    const runPollingCheck = () => {
       if (!isTauri()) {
         void refreshUsage();
         return;
@@ -188,17 +194,40 @@ function App() {
 
       void getWindowPollingAllowed()
         .then((allowed) => {
+          if (!isActive) {
+            return;
+          }
+
           setWindowPollingAllowed(allowed);
           if (allowed) {
             void refreshUsage();
+            return;
           }
+
+          schedulePollingCheck(false);
         })
         .catch(() => {
-          setWindowPollingAllowed(false);
-        });
-    }, delayMs);
+          if (!isActive) {
+            return;
+          }
 
-    return () => window.clearTimeout(timeoutId);
+          setWindowPollingAllowed(false);
+          schedulePollingCheck(false);
+        });
+    };
+
+    if (isWindowPollingAllowed) {
+      schedulePollingCheck(true);
+    } else {
+      runPollingCheck();
+    }
+
+    return () => {
+      isActive = false;
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
   }, [config.pollIntervalSeconds, isWindowPollingAllowed, refreshUsage, setWindowPollingAllowed, snapshot, usageState.kind]);
 
   const saveCurrentPlacement = useCallback(() => {

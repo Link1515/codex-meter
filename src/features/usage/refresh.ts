@@ -52,6 +52,19 @@ export function nextAutomaticRefreshDelayMs(
   return Math.max(configuredDelayMs, configurationRetryDelayMs);
 }
 
+export function nextUsagePollingCheckDelayMs(
+  snapshot: CodexUsageSnapshot,
+  pollIntervalSeconds: number,
+  consecutiveFailureCount: number,
+  isWindowPollingAllowed: boolean
+): number {
+  if (!isWindowPollingAllowed) {
+    return minimumAutomaticRefreshDelayMs;
+  }
+
+  return nextAutomaticRefreshDelayMs(snapshot, pollIntervalSeconds, consecutiveFailureCount);
+}
+
 export function isRetryableRefreshStatus(snapshot: CodexUsageSnapshot): boolean {
   return snapshot.status === "timeout" || snapshot.status === "command_error";
 }
