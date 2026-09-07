@@ -3,7 +3,7 @@ use std::{
     io::{self, BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::mpsc,
+    sync::{mpsc, OnceLock},
     thread,
     time::{Duration, Instant},
 };
@@ -19,6 +19,8 @@ use crate::codex::{
 };
 
 pub const DEV_MOCK_COMMAND_ALIAS: &str = "__codex_meter_mock__";
+
+static OAUTH_USAGE_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -87,11 +89,7 @@ fn is_authentication_error(message: &str) -> bool {
 
 fn fetch_oauth_usage() -> io::Result<CodexUsageSnapshot> {
     let access_token = read_codex_access_token()?;
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent(format!("codex-meter/{}", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+    let client = oauth_usage_client()?;
     let response = client
         .get("https://chatgpt.com/backend-api/wham/usage")
         .bearer_auth(access_token)
@@ -118,6 +116,26 @@ fn fetch_oauth_usage() -> io::Result<CodexUsageSnapshot> {
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
 
     snapshot_from_oauth_usage(value)
+}
+
+fn oauth_usage_client() -> io::Result<&'static reqwest::blocking::Client> {
+    if let Some(client) = OAUTH_USAGE_CLIENT.get() {
+        return Ok(client);
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .user_agent(format!("codex-meter/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+    let _ = OAUTH_USAGE_CLIENT.set(client);
+
+    OAUTH_USAGE_CLIENT.get().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            "Codex OAuth usage client was unavailable after initialization",
+        )
+    })
 }
 
 fn read_codex_access_token() -> io::Result<String> {
@@ -762,7 +780,8 @@ mod tests {
 
     use super::{
         app_server_error_with_stderr, fetch_codex_usage, is_app_server_rpc_config,
-        snapshot_from_oauth_usage, snapshot_from_rate_limits, summary_text, DEV_MOCK_COMMAND_ALIAS,
+        oauth_usage_client, snapshot_from_oauth_usage, snapshot_from_rate_limits, summary_text,
+        DEV_MOCK_COMMAND_ALIAS,
     };
     use crate::codex::types::{CliUsageConfig, ParserMode, UsageStatus};
 
@@ -790,6 +809,14 @@ mod tests {
                 .and_then(|limit| limit.remaining_percent),
             Some(55.0)
         );
+    }
+
+    #[test]
+    fn reuses_the_oauth_usage_client() {
+        let first = oauth_usage_client().expect("OAuth client should initialize");
+        let second = oauth_usage_client().expect("OAuth client should remain available");
+
+        assert!(std::ptr::eq(first, second));
     }
 
     #[test]
