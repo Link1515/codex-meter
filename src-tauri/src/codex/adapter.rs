@@ -258,11 +258,7 @@ fn app_server_error_with_stderr(error: io::Error, stderr: &str) -> io::Error {
 
     io::Error::new(
         error.kind(),
-        format!(
-            "{}: {}",
-            error,
-            sanitize_message(&summary_text(stderr, ""))
-        ),
+        format!("{}: {}", error, sanitize_message(&summary_text(stderr, ""))),
     )
 }
 
@@ -863,7 +859,10 @@ mod tests {
     #[test]
     fn includes_app_server_stderr_when_stdout_closes() {
         let error = app_server_error_with_stderr(
-            io::Error::new(io::ErrorKind::UnexpectedEof, "Codex app-server closed stdout"),
+            io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "Codex app-server closed stdout",
+            ),
             "error: invalid value 'untrusted' for '--ask-for-approval'",
         );
 

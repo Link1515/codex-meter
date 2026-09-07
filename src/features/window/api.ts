@@ -13,12 +13,12 @@ export async function startDragging(): Promise<void> {
   return invoke<void>("start_dragging");
 }
 
-export async function showWindow(): Promise<void> {
-  return invoke<void>("show_window");
+export async function setWindowSize(width: number, height: number): Promise<void> {
+  return invoke<void>("set_window_size", { width, height });
 }
 
-export async function setWindowSize(width: number, height: number, show = false): Promise<void> {
-  return invoke<void>("set_window_size", { width, height, show });
+export async function getWindowPollingAllowed(): Promise<boolean> {
+  return invoke<boolean>("is_window_polling_allowed");
 }
 
 export async function getWindowPlacement(): Promise<WindowPlacementState> {

@@ -1,10 +1,14 @@
-use tauri::{LogicalSize, Manager, PhysicalPosition, Window};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewWindow, Window};
 
 use crate::codex::errors::AppError;
 use crate::window::{
     placement::{ensure_visible, VisibleBounds},
     types::WindowPlacementState,
 };
+
+pub const USAGE_REFRESH_REQUESTED_EVENT: &str = "codex-meter://usage-refresh-requested";
+pub const WINDOW_VISIBILITY_CHANGED_EVENT: &str = "codex-meter://window-visibility-changed";
+const MAIN_WINDOW_LABEL: &str = "main";
 
 #[tauri::command]
 pub fn set_always_on_top(window: Window, enabled: bool) -> Result<bool, AppError> {
@@ -35,17 +39,85 @@ pub fn start_dragging(window: Window) -> Result<(), AppError> {
     })
 }
 
-#[tauri::command]
-pub fn show_window(window: Window) -> Result<(), AppError> {
+pub fn reveal_widget_window(window: &WebviewWindow) -> Result<(), AppError> {
+    window.unminimize().map_err(|error| {
+        AppError::window_control_failed(format!("Unable to restore widget window: {}", error))
+    })?;
+    window.show().map_err(|error| {
+        AppError::window_control_failed(format!("Unable to show widget window: {}", error))
+    })?;
+    let _ = window.set_focus();
     window
-        .show()
-        .map_err(|error| AppError::window_control_failed(format!("Unable to show window: {}", error)))
+        .emit(WINDOW_VISIBILITY_CHANGED_EVENT, true)
+        .map_err(|error| {
+            AppError::window_control_failed(format!(
+                "Unable to notify widget visibility: {}",
+                error
+            ))
+        })
+}
+
+pub fn conceal_widget_window(window: &WebviewWindow) -> Result<(), AppError> {
+    window.hide().map_err(|error| {
+        AppError::window_control_failed(format!("Unable to hide widget window: {}", error))
+    })?;
+    window
+        .emit(WINDOW_VISIBILITY_CHANGED_EVENT, false)
+        .map_err(|error| {
+            AppError::window_control_failed(format!(
+                "Unable to notify widget visibility: {}",
+                error
+            ))
+        })
+}
+
+pub fn toggle_widget_window(app: &AppHandle) -> Result<(), AppError> {
+    let window = main_widget_window(app)?;
+    let is_visible = window.is_visible().map_err(|error| {
+        AppError::window_control_failed(format!("Unable to read widget visibility: {}", error))
+    })?;
+    let is_minimized = window.is_minimized().map_err(|error| {
+        AppError::window_control_failed(format!("Unable to read widget minimized state: {}", error))
+    })?;
+
+    if is_visible && !is_minimized {
+        conceal_widget_window(&window)
+    } else {
+        reveal_widget_window(&window)
+    }
+}
+
+pub fn conceal_main_widget_window(app: &AppHandle) -> Result<(), AppError> {
+    let window = main_widget_window(app)?;
+    conceal_widget_window(&window)
+}
+
+pub fn request_usage_refresh(app: &AppHandle) -> Result<(), AppError> {
+    main_widget_window(app)?
+        .emit(USAGE_REFRESH_REQUESTED_EVENT, ())
+        .map_err(|error| {
+            AppError::window_control_failed(format!("Unable to request usage refresh: {}", error))
+        })
 }
 
 #[tauri::command]
-pub fn set_window_size(window: Window, width: f64, height: f64, show: bool) -> Result<(), AppError> {
+pub fn is_window_polling_allowed(window: Window) -> Result<bool, AppError> {
+    let is_visible = window.is_visible().map_err(|error| {
+        AppError::window_control_failed(format!("Unable to read widget visibility: {}", error))
+    })?;
+    let is_minimized = window.is_minimized().map_err(|error| {
+        AppError::window_control_failed(format!("Unable to read widget minimized state: {}", error))
+    })?;
+
+    Ok(is_visible && !is_minimized)
+}
+
+#[tauri::command]
+pub fn set_window_size(window: Window, width: f64, height: f64) -> Result<(), AppError> {
     if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
-        return Err(AppError::invalid_config("Window size must be positive finite values"));
+        return Err(AppError::invalid_config(
+            "Window size must be positive finite values",
+        ));
     }
 
     window.set_resizable(true).map_err(|error| {
@@ -54,7 +126,9 @@ pub fn set_window_size(window: Window, width: f64, height: f64, show: bool) -> R
 
     let resize_result = window
         .set_size(LogicalSize::new(width, height))
-        .map_err(|error| AppError::window_control_failed(format!("Unable to resize window: {}", error)));
+        .map_err(|error| {
+            AppError::window_control_failed(format!("Unable to resize window: {}", error))
+        });
 
     let restore_result = window.set_resizable(false).map_err(|error| {
         AppError::window_control_failed(format!("Unable to restore fixed window size: {}", error))
@@ -63,11 +137,12 @@ pub fn set_window_size(window: Window, width: f64, height: f64, show: bool) -> R
     resize_result?;
     restore_result?;
 
-    if show {
-        show_window(window)?;
-    }
-
     Ok(())
+}
+
+fn main_widget_window(app: &AppHandle) -> Result<WebviewWindow, AppError> {
+    app.get_webview_window(MAIN_WINDOW_LABEL)
+        .ok_or_else(|| AppError::window_control_failed("Widget window handle was not found"))
 }
 
 #[tauri::command]

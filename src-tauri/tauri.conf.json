@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Codex Meter",
         "width": 300,
         "height": 140,

@@ -1,5 +1,7 @@
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { DragRegion } from "../components/DragRegion";
 import { PinButton } from "../components/PinButton";
 import { fetchUsage } from "../features/usage/api";
@@ -17,10 +19,17 @@ import {
   mergeUsageRefreshResult,
   nextAutomaticRefreshDelayMs
 } from "../features/usage/refresh";
-import { getAlwaysOnTop, getWindowPlacement, restoreWindowPlacement, setAlwaysOnTop } from "../features/window/api";
+import {
+  getAlwaysOnTop,
+  getWindowPlacement,
+  getWindowPollingAllowed,
+  restoreWindowPlacement,
+  setAlwaysOnTop
+} from "../features/window/api";
 import { useAutoWindowSize } from "../features/window/autoSize";
 import { loadPinState, loadWindowPlacement, savePinState, saveWindowPlacement } from "../features/window/storage";
 import type { WindowPinState } from "../features/window/types";
+import { usageRefreshRequestedEvent, useWindowPollingEligibility } from "../features/window/visibility";
 
 function App() {
   const contentRef = useRef<HTMLDivElement>(null);
@@ -31,7 +40,6 @@ function App() {
   });
   const [pinState, setPinState] = useState<WindowPinState>(loadPinState);
   const [pinBusy, setPinBusy] = useState(false);
-  const didRefreshOnStartup = useRef(false);
   const isFetchingUsage = useRef(false);
   const consecutiveRefreshFailureCount = useRef(0);
   const lastManualRefreshAt = useRef(0);
@@ -40,6 +48,7 @@ function App() {
   const snapshot = usageState.snapshot;
   const fiveHourLimit = snapshot.fiveHourUsageLimit ?? {};
   const weeklyLimit = snapshot.weeklyUsageLimit ?? {};
+  const { isWindowPollingAllowed, setWindowPollingAllowed } = useWindowPollingEligibility();
   useAutoWindowSize(contentRef);
 
   useEffect(() => {
@@ -130,16 +139,39 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (didRefreshOnStartup.current) {
+    if (!isWindowPollingAllowed) {
       return;
     }
 
-    didRefreshOnStartup.current = true;
     void refreshUsage();
+  }, [isWindowPollingAllowed, refreshUsage]);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    let isActive = true;
+    let unlisten: UnlistenFn | undefined;
+
+    void listen<void>(usageRefreshRequestedEvent, () => {
+      void refreshUsage();
+    }).then((removeListener) => {
+      if (isActive) {
+        unlisten = removeListener;
+      } else {
+        removeListener();
+      }
+    });
+
+    return () => {
+      isActive = false;
+      unlisten?.();
+    };
   }, [refreshUsage]);
 
   useEffect(() => {
-    if (usageState.kind === "loading") {
+    if (!isWindowPollingAllowed || usageState.kind === "loading") {
       return;
     }
 
@@ -149,11 +181,25 @@ function App() {
       consecutiveRefreshFailureCount.current
     );
     const timeoutId = window.setTimeout(() => {
-      void refreshUsage();
+      if (!isTauri()) {
+        void refreshUsage();
+        return;
+      }
+
+      void getWindowPollingAllowed()
+        .then((allowed) => {
+          setWindowPollingAllowed(allowed);
+          if (allowed) {
+            void refreshUsage();
+          }
+        })
+        .catch(() => {
+          setWindowPollingAllowed(false);
+        });
     }, delayMs);
 
     return () => window.clearTimeout(timeoutId);
-  }, [config.pollIntervalSeconds, refreshUsage, snapshot, usageState.kind]);
+  }, [config.pollIntervalSeconds, isWindowPollingAllowed, refreshUsage, setWindowPollingAllowed, snapshot, usageState.kind]);
 
   const saveCurrentPlacement = useCallback(() => {
     void getWindowPlacement()
