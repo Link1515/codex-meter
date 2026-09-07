@@ -17,6 +17,10 @@ export async function setWindowSize(width: number, height: number): Promise<void
   return invoke<void>("set_window_size", { width, height });
 }
 
+export async function revealWidgetWindow(): Promise<void> {
+  return invoke<void>("reveal_widget");
+}
+
 export async function getWindowPollingAllowed(): Promise<boolean> {
   return invoke<boolean>("is_window_polling_allowed");
 }

@@ -8,7 +8,7 @@ use tauri::Manager;
 use commands::usage::fetch_usage;
 use commands::window::{
     get_always_on_top, get_window_placement, is_window_polling_allowed, restore_window_placement,
-    set_always_on_top, set_window_size, start_dragging,
+    reveal_widget, set_always_on_top, set_window_size, start_dragging,
 };
 
 pub fn run() {
@@ -26,6 +26,7 @@ pub fn run() {
             get_always_on_top,
             start_dragging,
             set_window_size,
+            reveal_widget,
             is_window_polling_allowed,
             get_window_placement,
             restore_window_placement

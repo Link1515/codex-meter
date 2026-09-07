@@ -57,6 +57,17 @@ pub fn reveal_widget_window(window: &WebviewWindow) -> Result<(), AppError> {
         })
 }
 
+#[tauri::command]
+pub fn reveal_widget(window: Window) -> Result<(), AppError> {
+    let label = window.label().to_string();
+    let app = window.app_handle();
+    let target = app
+        .get_webview_window(&label)
+        .ok_or_else(|| AppError::window_control_failed("Widget window handle was not found"))?;
+
+    reveal_widget_window(&target)
+}
+
 pub fn conceal_widget_window(window: &WebviewWindow) -> Result<(), AppError> {
     window.hide().map_err(|error| {
         AppError::window_control_failed(format!("Unable to hide widget window: {}", error))

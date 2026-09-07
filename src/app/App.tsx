@@ -43,6 +43,8 @@ function App() {
   const isFetchingUsage = useRef(false);
   const consecutiveRefreshFailureCount = useRef(0);
   const lastManualRefreshAt = useRef(0);
+  const hasRequestedInitialRefresh = useRef(false);
+  const hasObservedInitialPollingEligibility = useRef(false);
   const snapshotRef = useRef(usageState.snapshot);
 
   const snapshot = usageState.snapshot;
@@ -139,7 +141,21 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (hasRequestedInitialRefresh.current) {
+      return;
+    }
+
+    hasRequestedInitialRefresh.current = true;
+    void refreshUsage();
+  }, [refreshUsage]);
+
+  useEffect(() => {
     if (!isWindowPollingAllowed) {
+      return;
+    }
+
+    if (!hasObservedInitialPollingEligibility.current) {
+      hasObservedInitialPollingEligibility.current = true;
       return;
     }
 

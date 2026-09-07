@@ -1,6 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef, type RefObject } from "react";
-import { setWindowSize } from "./api";
+import { revealWidgetWindow, setWindowSize } from "./api";
 
 export const MIN_WINDOW_WIDTH = 270;
 // This lower bound is used only while the hidden window is starting. The final
@@ -30,6 +30,7 @@ type ContentSizeMetrics = {
 
 export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): void {
   const lastAppliedSize = useRef<WindowSize | undefined>(undefined);
+  const hasStartedInitialSizing = useRef(false);
 
   useEffect(() => {
     const content = contentRef.current;
@@ -49,12 +50,24 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
         return;
       }
 
+      const isInitialSizing = !hasStartedInitialSizing.current;
+      hasStartedInitialSizing.current = true;
+
       void setWindowSize(nextSize.width, nextSize.height)
         .then(() => {
           lastAppliedSize.current = nextSize;
         })
         .catch(() => {
           // Auto sizing is best effort; tray controls remain available if it fails.
+        })
+        .finally(() => {
+          if (!isInitialSizing) {
+            return;
+          }
+
+          void revealWidgetWindow().catch(() => {
+            // A failed reveal must not prevent later sizing or tray actions.
+          });
         });
     };
 
