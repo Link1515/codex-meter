@@ -44,13 +44,12 @@ function App() {
   const consecutiveRefreshFailureCount = useRef(0);
   const lastManualRefreshAt = useRef(0);
   const hasRequestedInitialRefresh = useRef(false);
-  const hasObservedInitialPollingEligibility = useRef(false);
   const snapshotRef = useRef(usageState.snapshot);
 
   const snapshot = usageState.snapshot;
   const fiveHourLimit = snapshot.fiveHourUsageLimit ?? {};
   const weeklyLimit = snapshot.weeklyUsageLimit ?? {};
-  const { isWindowPollingAllowed, setWindowPollingAllowed } = useWindowPollingEligibility();
+  const { isWindowPollingAllowed, setWindowPollingAllowed, windowActivationCount } = useWindowPollingEligibility();
   useAutoWindowSize(contentRef);
 
   useEffect(() => {
@@ -150,17 +149,12 @@ function App() {
   }, [refreshUsage]);
 
   useEffect(() => {
-    if (!isWindowPollingAllowed) {
-      return;
-    }
-
-    if (!hasObservedInitialPollingEligibility.current) {
-      hasObservedInitialPollingEligibility.current = true;
+    if (windowActivationCount === 0) {
       return;
     }
 
     void refreshUsage();
-  }, [isWindowPollingAllowed, refreshUsage]);
+  }, [refreshUsage, windowActivationCount]);
 
   useEffect(() => {
     if (!isTauri()) {

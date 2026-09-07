@@ -10,10 +10,12 @@ const windowVisibilityChangedEvent = "codex-meter://window-visibility-changed";
 type WindowPollingEligibility = {
   isWindowPollingAllowed: boolean;
   setWindowPollingAllowed: (allowed: boolean) => void;
+  windowActivationCount: number;
 };
 
 export function useWindowPollingEligibility(): WindowPollingEligibility {
   const [isWindowPollingAllowed, setWindowPollingAllowed] = useState(() => !isTauri());
+  const [windowActivationCount, setWindowActivationCount] = useState(0);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -52,6 +54,7 @@ export function useWindowPollingEligibility(): WindowPollingEligibility {
       .onFocusChanged((event) => {
         if (event.payload) {
           refreshEligibility();
+          setWindowActivationCount((count) => count + 1);
         }
       })
       .then((unlisten) => {
@@ -68,5 +71,5 @@ export function useWindowPollingEligibility(): WindowPollingEligibility {
     };
   }, []);
 
-  return { isWindowPollingAllowed, setWindowPollingAllowed };
+  return { isWindowPollingAllowed, setWindowPollingAllowed, windowActivationCount };
 }
