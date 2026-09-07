@@ -171,8 +171,8 @@ function expandWhenNeeded(measuredSize: number, compactSize: number, padding = 0
   return measuredSize > compactSize ? measuredSize + padding : compactSize;
 }
 
-function safeMax(...values: number[]): number {
-  const finiteValues = values.filter(Number.isFinite);
+function safeMax(...values: Array<number | undefined>): number {
+  const finiteValues = values.filter((value): value is number => Number.isFinite(value));
 
   return finiteValues.length > 0 ? Math.max(...finiteValues) : 0;
 }
