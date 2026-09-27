@@ -1,18 +1,15 @@
 import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef, type RefObject } from "react";
 import { revealWidgetWindow, setWindowSize } from "./api";
 
 export const MIN_WINDOW_WIDTH = 270;
-// This lower bound is used only while the hidden window is starting. The final
-// height comes from rendered content, which varies with font metrics and
-// display scaling.
-export const MIN_WINDOW_HEIGHT = 130;
+// Used only when the DOM has not produced a measurable layout yet.
+export const MIN_WINDOW_HEIGHT = 190;
 export const MAX_WINDOW_WIDTH = 420;
 export const MAX_WINDOW_HEIGHT = 360;
 const SIZE_CHANGE_THRESHOLD = 1;
-const CONTENT_WIDTH_PADDING = 8;
-const CONTENT_HEIGHT_PADDING = 4;
-const SETTLE_DELAY_MS = [80, 240, 600];
+const MAX_POST_RESIZE_VALIDATIONS = 2;
 
 type WindowSize = {
   width: number;
@@ -28,9 +25,14 @@ type ContentSizeMetrics = {
   visualHeight?: number;
 };
 
+type VisualExtent = {
+  visualWidth: number;
+  visualHeight: number;
+};
+
 export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): void {
-  const lastAppliedSize = useRef<WindowSize | undefined>(undefined);
-  const hasStartedInitialSizing = useRef(false);
+  const lastRequestedSize = useRef<WindowSize | undefined>(undefined);
+  const hasRevealedWindow = useRef(false);
 
   useEffect(() => {
     const content = contentRef.current;
@@ -39,39 +41,87 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
     }
 
     let animationFrameId: number | undefined;
-    const settleTimeoutIds: number[] = [];
+    let isResizeInFlight = false;
+    let shouldRetryAfterResize = false;
+    let postResizeValidationCount = 0;
     let isActive = true;
+    let removeScaleChangeListener: (() => void) | undefined;
 
-    const applySize = () => {
-      const nextSize = measureWindowSize(content);
-      const previousSize = lastAppliedSize.current;
-
-      if (previousSize && isSameSize(previousSize, nextSize)) {
+    const revealInitialWindow = () => {
+      if (hasRevealedWindow.current) {
         return;
       }
 
-      const isInitialSizing = !hasStartedInitialSizing.current;
-      hasStartedInitialSizing.current = true;
+      hasRevealedWindow.current = true;
+      void revealWidgetWindow().catch(() => {
+        // A failed reveal must not prevent later sizing or tray actions.
+      });
+    };
 
-      void setWindowSize(nextSize.width, nextSize.height)
+    const applySize = () => {
+      if (isResizeInFlight) {
+        shouldRetryAfterResize = true;
+        return;
+      }
+
+      const nextSize = measureWindowSize(content);
+      const matchesLastRequest =
+        lastRequestedSize.current !== undefined && isSameSize(lastRequestedSize.current, nextSize);
+
+      if (matchesLastRequest && contentFitsViewport(content)) {
+        postResizeValidationCount = 0;
+        revealInitialWindow();
+        return;
+      }
+
+      isResizeInFlight = true;
+      void setWindowSize({
+        ...nextSize,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight
+      })
         .then(() => {
-          lastAppliedSize.current = nextSize;
+          lastRequestedSize.current = nextSize;
+          window.requestAnimationFrame(() => {
+            if (!isActive) {
+              return;
+            }
+
+            if (contentFitsViewport(content)) {
+              postResizeValidationCount = 0;
+              revealInitialWindow();
+              return;
+            }
+
+            if (postResizeValidationCount < MAX_POST_RESIZE_VALIDATIONS) {
+              postResizeValidationCount += 1;
+              scheduleApplySize();
+              return;
+            }
+
+            // Content can be larger than the configured window maximum. Do
+            // not loop native resize commands forever in that situation.
+            revealInitialWindow();
+          });
         })
         .catch(() => {
-          // Auto sizing is best effort; tray controls remain available if it fails.
+          // Keep the widget reachable if native sizing fails.
+          revealInitialWindow();
         })
         .finally(() => {
-          if (!isInitialSizing) {
-            return;
+          isResizeInFlight = false;
+          if (shouldRetryAfterResize) {
+            shouldRetryAfterResize = false;
+            scheduleApplySize(true);
           }
-
-          void revealWidgetWindow().catch(() => {
-            // A failed reveal must not prevent later sizing or tray actions.
-          });
         });
     };
 
-    const scheduleApplySize = () => {
+    const scheduleApplySize = (restartValidation = false) => {
+      if (restartValidation) {
+        postResizeValidationCount = 0;
+      }
+
       if (animationFrameId !== undefined) {
         window.cancelAnimationFrame(animationFrameId);
       }
@@ -79,24 +129,32 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
       animationFrameId = window.requestAnimationFrame(applySize);
     };
 
-    const resizeObserver = new ResizeObserver(scheduleApplySize);
+    const handleBrowserResize = () => scheduleApplySize(true);
+    const resizeObserver = new ResizeObserver(() => scheduleApplySize(true));
     resizeObserver.observe(content);
-    window.addEventListener("resize", scheduleApplySize);
-    scheduleApplySize();
-    SETTLE_DELAY_MS.forEach((delayMs) => {
-      settleTimeoutIds.push(window.setTimeout(scheduleApplySize, delayMs));
-    });
+    window.addEventListener("resize", handleBrowserResize);
+    scheduleApplySize(true);
+
     void document.fonts?.ready.then(() => {
       if (isActive) {
-        scheduleApplySize();
+        scheduleApplySize(true);
       }
     });
+    void getCurrentWindow()
+      .onScaleChanged(() => scheduleApplySize(true))
+      .then((unlisten) => {
+        if (isActive) {
+          removeScaleChangeListener = unlisten;
+        } else {
+          unlisten();
+        }
+      });
 
     return () => {
       isActive = false;
       resizeObserver.disconnect();
-      window.removeEventListener("resize", scheduleApplySize);
-      settleTimeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      window.removeEventListener("resize", handleBrowserResize);
+      removeScaleChangeListener?.();
       if (animationFrameId !== undefined) {
         window.cancelAnimationFrame(animationFrameId);
       }
@@ -105,73 +163,49 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
 }
 
 function measureWindowSize(content: HTMLElement): WindowSize {
-  const compactProbe = createCompactProbe(content);
-  document.body.appendChild(compactProbe);
+  const rect = content.getBoundingClientRect();
+  const visualExtent = measureVisualExtent(content, rect);
 
-  try {
-    const rect = compactProbe.getBoundingClientRect();
-
-    return resolveWindowSize({
-      scrollWidth: compactProbe.scrollWidth,
-      scrollHeight: compactProbe.scrollHeight,
-      boundingWidth: rect.width,
-      boundingHeight: rect.height,
-      ...measureVisualExtent(compactProbe, rect)
-    });
-  } finally {
-    compactProbe.remove();
-  }
+  return resolveWindowSize({
+    scrollWidth: content.scrollWidth,
+    scrollHeight: content.scrollHeight,
+    boundingWidth: rect.width,
+    boundingHeight: rect.height,
+    ...visualExtent
+  });
 }
 
-function measureVisualExtent(probe: HTMLElement, probeRect: DOMRect): Pick<ContentSizeMetrics, "visualWidth" | "visualHeight"> {
-  let visualRight = probeRect.right;
-  let visualBottom = probeRect.bottom;
+function contentFitsViewport(content: HTMLElement): boolean {
+  const rect = content.getBoundingClientRect();
+  const extent = measureVisualExtent(content, rect);
 
-  probe.querySelectorAll<HTMLElement>("*").forEach((element) => {
+  return extent.visualWidth <= window.innerWidth && extent.visualHeight <= window.innerHeight;
+}
+
+function measureVisualExtent(content: HTMLElement, contentRect: DOMRect): VisualExtent {
+  let visualRight = contentRect.right;
+  let visualBottom = contentRect.bottom;
+
+  content.querySelectorAll<HTMLElement>("*").forEach((element) => {
     const rect = element.getBoundingClientRect();
     visualRight = Math.max(visualRight, rect.right);
     visualBottom = Math.max(visualBottom, rect.bottom);
   });
 
   return {
-    visualWidth: visualRight - probeRect.left,
-    visualHeight: visualBottom - probeRect.top
+    visualWidth: visualRight - contentRect.left,
+    visualHeight: visualBottom - contentRect.top
   };
-}
-
-function createCompactProbe(content: HTMLElement): HTMLElement {
-  const probe = content.cloneNode(true) as HTMLElement;
-
-  probe.style.position = "fixed";
-  probe.style.left = "-10000px";
-  probe.style.top = "0";
-  probe.style.width = `${MIN_WINDOW_WIDTH}px`;
-  probe.style.minWidth = `${MIN_WINDOW_WIDTH}px`;
-  probe.style.maxWidth = `${MIN_WINDOW_WIDTH}px`;
-  probe.style.height = "auto";
-  probe.style.minHeight = "0";
-  probe.style.maxHeight = "none";
-  probe.style.visibility = "hidden";
-  probe.style.pointerEvents = "none";
-  probe.style.contain = "layout style";
-
-  return probe;
 }
 
 export function resolveWindowSize(metrics: ContentSizeMetrics): WindowSize {
   const measuredWidth = safeMax(metrics.scrollWidth, metrics.boundingWidth, metrics.visualWidth);
   const measuredHeight = safeMax(metrics.scrollHeight, metrics.boundingHeight, metrics.visualHeight);
-  const nextWidth = expandWhenNeeded(measuredWidth, MIN_WINDOW_WIDTH, CONTENT_WIDTH_PADDING);
-  const nextHeight = expandWhenNeeded(measuredHeight, MIN_WINDOW_HEIGHT, CONTENT_HEIGHT_PADDING);
 
   return {
-    width: clamp(Math.ceil(nextWidth), MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH),
-    height: clamp(Math.ceil(nextHeight), MIN_WINDOW_HEIGHT, MAX_WINDOW_HEIGHT)
+    width: clamp(Math.ceil(measuredWidth), MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH),
+    height: clamp(Math.ceil(measuredHeight), MIN_WINDOW_HEIGHT, MAX_WINDOW_HEIGHT)
   };
-}
-
-function expandWhenNeeded(measuredSize: number, compactSize: number, padding = 0): number {
-  return measuredSize > compactSize ? measuredSize + padding : compactSize;
 }
 
 function safeMax(...values: Array<number | undefined>): number {

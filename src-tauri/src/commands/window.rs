@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewWindow, Window};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow, Window};
 
 use crate::codex::errors::AppError;
 use crate::window::{
@@ -124,19 +124,43 @@ pub fn is_window_polling_allowed(window: Window) -> Result<bool, AppError> {
 }
 
 #[tauri::command]
-pub fn set_window_size(window: Window, width: f64, height: f64) -> Result<(), AppError> {
-    if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+pub fn set_window_size(
+    window: Window,
+    width: f64,
+    height: f64,
+    viewport_width: f64,
+    viewport_height: f64,
+) -> Result<(), AppError> {
+    if !is_positive_finite(width)
+        || !is_positive_finite(height)
+        || !is_positive_finite(viewport_width)
+        || !is_positive_finite(viewport_height)
+    {
         return Err(AppError::invalid_config(
             "Window size must be positive finite values",
         ));
     }
+
+    let current_inner_size = window.inner_size().map_err(|error| {
+        AppError::window_control_failed(format!("Unable to read current window size: {}", error))
+    })?;
+    let physical_width =
+        physical_pixels_for_css_extent(width, viewport_width, current_inner_size.width)
+            .ok_or_else(|| {
+                AppError::invalid_config("Unable to convert widget width to physical pixels")
+            })?;
+    let physical_height =
+        physical_pixels_for_css_extent(height, viewport_height, current_inner_size.height)
+            .ok_or_else(|| {
+                AppError::invalid_config("Unable to convert widget height to physical pixels")
+            })?;
 
     window.set_resizable(true).map_err(|error| {
         AppError::window_control_failed(format!("Unable to prepare window resize: {}", error))
     })?;
 
     let resize_result = window
-        .set_size(LogicalSize::new(width, height))
+        .set_size(PhysicalSize::new(physical_width, physical_height))
         .map_err(|error| {
             AppError::window_control_failed(format!("Unable to resize window: {}", error))
         });
@@ -149,6 +173,32 @@ pub fn set_window_size(window: Window, width: f64, height: f64) -> Result<(), Ap
     restore_result?;
 
     Ok(())
+}
+
+fn is_positive_finite(value: f64) -> bool {
+    value.is_finite() && value > 0.0
+}
+
+fn physical_pixels_for_css_extent(
+    desired_css_extent: f64,
+    viewport_css_extent: f64,
+    current_physical_extent: u32,
+) -> Option<u32> {
+    if !is_positive_finite(desired_css_extent)
+        || !is_positive_finite(viewport_css_extent)
+        || current_physical_extent == 0
+    {
+        return None;
+    }
+
+    let physical_extent =
+        (desired_css_extent * current_physical_extent as f64 / viewport_css_extent).ceil();
+
+    if physical_extent.is_finite() && physical_extent > 0.0 && physical_extent <= u32::MAX as f64 {
+        Some(physical_extent as u32)
+    } else {
+        None
+    }
 }
 
 fn main_widget_window(app: &AppHandle) -> Result<WebviewWindow, AppError> {
@@ -243,4 +293,20 @@ fn visible_bounds_for_placement(
         width: size.width,
         height: size.height,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::physical_pixels_for_css_extent;
+
+    #[test]
+    fn rounds_up_css_content_to_native_pixels() {
+        assert_eq!(physical_pixels_for_css_extent(205.0, 190.0, 262), Some(283));
+    }
+
+    #[test]
+    fn rejects_invalid_viewport_measurements() {
+        assert_eq!(physical_pixels_for_css_extent(205.0, 0.0, 262), None);
+        assert_eq!(physical_pixels_for_css_extent(f64::NAN, 190.0, 262), None);
+    }
 }

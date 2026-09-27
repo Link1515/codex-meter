@@ -8,7 +8,7 @@ import {
 } from "../../src/features/window/autoSize";
 
 describe("window auto size", () => {
-  it("keeps the hidden-startup minimum when content fits", () => {
+  it("keeps the measurement-failure fallback when content fits", () => {
     expect(
       resolveWindowSize({
         scrollWidth: MIN_WINDOW_WIDTH,
@@ -22,7 +22,7 @@ describe("window auto size", () => {
     });
   });
 
-  it("keeps the compact baseline when content is shorter", () => {
+  it("keeps the compact fallback when content is shorter", () => {
     expect(
       resolveWindowSize({
         scrollWidth: MIN_WINDOW_WIDTH,
@@ -36,7 +36,7 @@ describe("window auto size", () => {
     });
   });
 
-  it("uses the measured content height instead of a fixed two-line label reserve", () => {
+  it("uses the measured content height without CSS pixel padding", () => {
     expect(
       resolveWindowSize({
         scrollWidth: MIN_WINDOW_WIDTH,
@@ -46,7 +46,7 @@ describe("window auto size", () => {
       })
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
-      height: 212
+      height: 208
     });
   });
 
@@ -62,7 +62,7 @@ describe("window auto size", () => {
       })
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
-      height: 222
+      height: 218
     });
   });
 
@@ -76,7 +76,7 @@ describe("window auto size", () => {
       })
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
-      height: MIN_WINDOW_HEIGHT + 5
+      height: MIN_WINDOW_HEIGHT + 1
     });
   });
 
@@ -90,7 +90,7 @@ describe("window auto size", () => {
       })
     ).toEqual({
       width: MIN_WINDOW_WIDTH,
-      height: 243
+      height: 239
     });
   });
 

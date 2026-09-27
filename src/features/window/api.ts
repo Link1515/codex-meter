@@ -13,8 +13,15 @@ export async function startDragging(): Promise<void> {
   return invoke<void>("start_dragging");
 }
 
-export async function setWindowSize(width: number, height: number): Promise<void> {
-  return invoke<void>("set_window_size", { width, height });
+export type WindowSizeRequest = {
+  width: number;
+  height: number;
+  viewportWidth: number;
+  viewportHeight: number;
+};
+
+export async function setWindowSize(request: WindowSizeRequest): Promise<void> {
+  return invoke<void>("set_window_size", request);
 }
 
 export async function revealWidgetWindow(): Promise<void> {
