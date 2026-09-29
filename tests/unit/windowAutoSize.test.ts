@@ -121,4 +121,20 @@ describe("window auto size", () => {
       height: MAX_WINDOW_HEIGHT
     });
   });
+  it("keeps compact content at the compact width instead of a wider startup viewport", () => {
+    expect(
+      resolveWindowSize({
+        scrollWidth: MIN_WINDOW_WIDTH,
+        scrollHeight: MIN_WINDOW_HEIGHT,
+        boundingWidth: MIN_WINDOW_WIDTH,
+        boundingHeight: MIN_WINDOW_HEIGHT,
+        visualWidth: MIN_WINDOW_WIDTH,
+        visualHeight: MIN_WINDOW_HEIGHT
+      })
+    ).toEqual({
+      width: MIN_WINDOW_WIDTH,
+      height: MIN_WINDOW_HEIGHT
+    });
+  });
+
 });

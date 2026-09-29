@@ -163,16 +163,46 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
 }
 
 function measureWindowSize(content: HTMLElement): WindowSize {
-  const rect = content.getBoundingClientRect();
-  const visualExtent = measureVisualExtent(content, rect);
+  const probe = createContentMeasurementProbe(content);
+  document.body.appendChild(probe);
 
-  return resolveWindowSize({
-    scrollWidth: content.scrollWidth,
-    scrollHeight: content.scrollHeight,
-    boundingWidth: rect.width,
-    boundingHeight: rect.height,
-    ...visualExtent
-  });
+  try {
+    const rect = probe.getBoundingClientRect();
+
+    return resolveWindowSize({
+      scrollWidth: probe.scrollWidth,
+      scrollHeight: probe.scrollHeight,
+      boundingWidth: rect.width,
+      boundingHeight: rect.height,
+      ...measureVisualExtent(probe, rect)
+    });
+  } finally {
+    probe.remove();
+  }
+}
+
+/**
+ * Measure against the compact baseline instead of the live window. The live
+ * content fills its parent (`width: 100%`), so using it directly would retain
+ * an oversized startup viewport even when the rendered meter needs less room.
+ */
+function createContentMeasurementProbe(content: HTMLElement): HTMLElement {
+  const probe = content.cloneNode(true) as HTMLElement;
+
+  probe.style.position = "fixed";
+  probe.style.left = "-10000px";
+  probe.style.top = "0";
+  probe.style.width = `${MIN_WINDOW_WIDTH}px`;
+  probe.style.minWidth = `${MIN_WINDOW_WIDTH}px`;
+  probe.style.maxWidth = `${MIN_WINDOW_WIDTH}px`;
+  probe.style.height = "auto";
+  probe.style.minHeight = "0";
+  probe.style.maxHeight = "none";
+  probe.style.visibility = "hidden";
+  probe.style.pointerEvents = "none";
+  probe.style.contain = "layout style";
+
+  return probe;
 }
 
 function contentFitsViewport(content: HTMLElement): boolean {
