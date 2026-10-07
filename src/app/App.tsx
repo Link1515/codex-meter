@@ -1,13 +1,13 @@
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Settings } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { DragRegion } from "../components/DragRegion";
 import { PinButton } from "../components/PinButton";
+import { UsageSettings } from "../components/UsageSettings";
 import { fetchUsage } from "../features/usage/api";
-import { defaultUsageConfig } from "../features/usage/defaults";
-import { loadCachedSnapshot, saveCachedSnapshot } from "../features/usage/storage";
-import type { CodexUsageSnapshot, UsageViewState } from "../features/usage/types";
+import { loadCachedSnapshot, loadUsageConfig, saveUsageConfig, saveCachedSnapshot } from "../features/usage/storage";
+import type { CliUsageConfig, CodexUsageSnapshot, UsageViewState } from "../features/usage/types";
 import {
   formatDatedResetTimestamp,
   formatPercent,
@@ -33,7 +33,8 @@ import { usageRefreshRequestedEvent, useWindowPollingEligibility } from "../feat
 
 function App() {
   const contentRef = useRef<HTMLDivElement>(null);
-  const config = defaultUsageConfig;
+  const [config, setConfig] = useState(loadUsageConfig);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [usageState, setUsageState] = useState<UsageViewState>({
     kind: "idle",
     snapshot: loadCachedSnapshot()
@@ -43,14 +44,14 @@ function App() {
   const isFetchingUsage = useRef(false);
   const consecutiveRefreshFailureCount = useRef(0);
   const lastManualRefreshAt = useRef(0);
-  const hasRequestedInitialRefresh = useRef(false);
+  const lastRequestedConfig = useRef<CliUsageConfig | undefined>(undefined);
   const snapshotRef = useRef(usageState.snapshot);
 
   const snapshot = usageState.snapshot;
   const fiveHourLimit = snapshot.fiveHourUsageLimit ?? {};
   const weeklyLimit = snapshot.weeklyUsageLimit ?? {};
   const { isWindowPollingAllowed, setWindowPollingAllowed, windowActivationCount } = useWindowPollingEligibility();
-  useAutoWindowSize(contentRef);
+  useAutoWindowSize(contentRef, settingsOpen);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -140,13 +141,14 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (hasRequestedInitialRefresh.current) {
+    if (lastRequestedConfig.current === config) {
       return;
     }
 
-    hasRequestedInitialRefresh.current = true;
+    lastRequestedConfig.current = config;
+    consecutiveRefreshFailureCount.current = 0;
     void refreshUsage();
-  }, [refreshUsage]);
+  }, [config, refreshUsage]);
 
   useEffect(() => {
     if (windowActivationCount === 0) {
@@ -266,10 +268,13 @@ function App() {
 
   return (
     <DragRegion className="app-shell" element="main" onDragComplete={saveCurrentPlacement}>
-      <div className="app-content" ref={contentRef}>
+      <div className={`app-content${settingsOpen ? " app-content--settings" : ""}`} ref={contentRef}>
         <header className="window-header">
           <span className="app-title">Codex Meter</span>
           <div className="window-actions">
+            <button className="icon-button" type="button" aria-label="Usage settings" title="Usage settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((open) => !open)}>
+              <Settings size={16} aria-hidden="true" />
+            </button>
             <button
               className="icon-button"
               type="button"
@@ -284,7 +289,12 @@ function App() {
           </div>
         </header>
 
-        <section className="usage-panel" aria-label="Codex usage">
+        {settingsOpen ? <UsageSettings config={config} busy={usageState.kind === "loading"} onCancel={() => setSettingsOpen(false)} onSave={(nextConfig) => {
+          if (isFetchingUsage.current) return;
+          saveUsageConfig(nextConfig);
+          setConfig(nextConfig);
+          setSettingsOpen(false);
+        }} /> : <section className="usage-panel" aria-label="Codex usage">
           <LimitMeter label="5h" limit={fiveHourLimit} />
           <LimitMeter label="Weekly" limit={weeklyLimit} showResetDate />
 
@@ -294,7 +304,7 @@ function App() {
               <span>{snapshotMessage(snapshot)}</span>
             </div>
           )}
-        </section>
+        </section>}
       </div>
     </DragRegion>
   );

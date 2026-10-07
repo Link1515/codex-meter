@@ -10,6 +10,9 @@ export type UsageStatus =
   | "command_error";
 
 export type CliUsageConfig = {
+  executionMode: "native" | "wsl";
+  wslDistribution: string;
+  wslUser: string;
   codexCommand: string;
   usageArgs: string[];
   pollIntervalSeconds: number;

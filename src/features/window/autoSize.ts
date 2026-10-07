@@ -30,8 +30,9 @@ type VisualExtent = {
   visualHeight: number;
 };
 
-export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): void {
+export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>, preserveWidth = false): void {
   const lastRequestedSize = useRef<WindowSize | undefined>(undefined);
+  const lastContentWidth = useRef(MIN_WINDOW_WIDTH);
   const hasRevealedWindow = useRef(false);
 
   useEffect(() => {
@@ -64,7 +65,7 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
         return;
       }
 
-      const nextSize = measureWindowSize(content);
+      const nextSize = measureWindowSize(content, preserveWidth ? lastContentWidth.current : undefined);
       const matchesLastRequest =
         lastRequestedSize.current !== undefined && isSameSize(lastRequestedSize.current, nextSize);
 
@@ -81,7 +82,13 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
         viewportHeight: window.innerHeight
       })
         .then(() => {
+          if (!isActive) {
+            return;
+          }
           lastRequestedSize.current = nextSize;
+          if (!preserveWidth) {
+            lastContentWidth.current = nextSize.width;
+          }
           window.requestAnimationFrame(() => {
             if (!isActive) {
               return;
@@ -159,11 +166,11 @@ export function useAutoWindowSize(contentRef: RefObject<HTMLElement | null>): vo
         window.cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [contentRef]);
+  }, [contentRef, preserveWidth]);
 }
 
-function measureWindowSize(content: HTMLElement): WindowSize {
-  const probe = createContentMeasurementProbe(content);
+function measureWindowSize(content: HTMLElement, fixedWidth?: number): WindowSize {
+  const probe = createContentMeasurementProbe(content, fixedWidth);
   document.body.appendChild(probe);
 
   try {
@@ -175,7 +182,7 @@ function measureWindowSize(content: HTMLElement): WindowSize {
       boundingWidth: rect.width,
       boundingHeight: rect.height,
       ...measureVisualExtent(probe, rect)
-    });
+    }, fixedWidth);
   } finally {
     probe.remove();
   }
@@ -186,15 +193,15 @@ function measureWindowSize(content: HTMLElement): WindowSize {
  * content fills its parent (`width: 100%`), so using it directly would retain
  * an oversized startup viewport even when the rendered meter needs less room.
  */
-function createContentMeasurementProbe(content: HTMLElement): HTMLElement {
+function createContentMeasurementProbe(content: HTMLElement, fixedWidth = MIN_WINDOW_WIDTH): HTMLElement {
   const probe = content.cloneNode(true) as HTMLElement;
 
   probe.style.position = "fixed";
   probe.style.left = "-10000px";
   probe.style.top = "0";
-  probe.style.width = `${MIN_WINDOW_WIDTH}px`;
-  probe.style.minWidth = `${MIN_WINDOW_WIDTH}px`;
-  probe.style.maxWidth = `${MIN_WINDOW_WIDTH}px`;
+  probe.style.width = `${fixedWidth}px`;
+  probe.style.minWidth = `${fixedWidth}px`;
+  probe.style.maxWidth = `${fixedWidth}px`;
   probe.style.height = "auto";
   probe.style.minHeight = "0";
   probe.style.maxHeight = "none";
@@ -212,12 +219,17 @@ function contentFitsViewport(content: HTMLElement): boolean {
   return extent.visualWidth <= window.innerWidth && extent.visualHeight <= window.innerHeight;
 }
 
-function measureVisualExtent(content: HTMLElement, contentRect: DOMRect): VisualExtent {
+export function measureVisualExtent(content: HTMLElement, contentRect: DOMRect): VisualExtent {
   let visualRight = contentRect.right;
   let visualBottom = contentRect.bottom;
 
   content.querySelectorAll<HTMLElement>("*").forEach((element) => {
     const rect = element.getBoundingClientRect();
+    // Native select options and hidden elements have an empty rect at (0, 0).
+    // Counting it would make the offscreen probe appear thousands of pixels wide.
+    if (rect.width === 0 && rect.height === 0) {
+      return;
+    }
     visualRight = Math.max(visualRight, rect.right);
     visualBottom = Math.max(visualBottom, rect.bottom);
   });
@@ -228,12 +240,12 @@ function measureVisualExtent(content: HTMLElement, contentRect: DOMRect): Visual
   };
 }
 
-export function resolveWindowSize(metrics: ContentSizeMetrics): WindowSize {
+export function resolveWindowSize(metrics: ContentSizeMetrics, fixedWidth?: number): WindowSize {
   const measuredWidth = safeMax(metrics.scrollWidth, metrics.boundingWidth, metrics.visualWidth);
   const measuredHeight = safeMax(metrics.scrollHeight, metrics.boundingHeight, metrics.visualHeight);
 
   return {
-    width: clamp(Math.ceil(measuredWidth), MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH),
+    width: clamp(Math.ceil(fixedWidth ?? measuredWidth), MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH),
     height: clamp(Math.ceil(measuredHeight), MIN_WINDOW_HEIGHT, MAX_WINDOW_HEIGHT)
   };
 }

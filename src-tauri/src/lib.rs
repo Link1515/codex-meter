@@ -5,7 +5,7 @@ mod window;
 
 use tauri::Manager;
 
-use commands::usage::fetch_usage;
+use commands::usage::{fetch_usage, is_wsl_supported};
 use commands::window::{
     get_always_on_top, get_window_placement, is_window_polling_allowed, restore_window_placement,
     reveal_widget, set_always_on_top, set_window_size, start_dragging,
@@ -22,6 +22,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             fetch_usage,
+            is_wsl_supported,
             set_always_on_top,
             get_always_on_top,
             start_dragging,

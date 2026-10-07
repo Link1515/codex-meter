@@ -3,10 +3,24 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CliUsageConfig {
+    #[serde(default)]
+    pub execution_mode: ExecutionMode,
+    #[serde(default)]
+    pub wsl_distribution: String,
+    #[serde(default)]
+    pub wsl_user: String,
     pub codex_command: String,
     pub usage_args: Vec<String>,
     pub timeout_seconds: u64,
     pub parser_mode: ParserMode,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ExecutionMode {
+    #[default]
+    Native,
+    Wsl,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -120,7 +134,15 @@ pub fn current_timestamp() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::ParserMode;
+    use super::{CliUsageConfig, ExecutionMode, ParserMode};
+
+    #[test]
+    fn old_configs_default_to_native_execution() {
+        let config: CliUsageConfig = serde_json::from_str(r#"{"codexCommand":"codex","usageArgs":["app-server"],"timeoutSeconds":10,"parserMode":"Json"}"#).expect("old config should deserialize");
+        assert_eq!(config.execution_mode, ExecutionMode::Native);
+        assert!(config.wsl_distribution.is_empty());
+        assert!(config.wsl_user.is_empty());
+    }
 
     #[test]
     fn deserializes_frontend_parser_mode_names() {

@@ -4,10 +4,55 @@ import {
   MAX_WINDOW_WIDTH,
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
+  measureVisualExtent,
   resolveWindowSize
 } from "../../src/features/window/autoSize";
 
 describe("window auto size", () => {
+  it("preserves the meter width in settings even when descendants report a larger extent", () => {
+    expect(resolveWindowSize({
+      scrollWidth: 420, scrollHeight: 205,
+      boundingWidth: 270, boundingHeight: 205,
+      visualWidth: 10000, visualHeight: 205
+    }, 270)).toEqual({ width: 270, height: 205 });
+  });
+
+  it("preserves a wider meter width instead of resetting it to the minimum", () => {
+    expect(resolveWindowSize({
+      scrollWidth: 300, scrollHeight: 190,
+      boundingWidth: 300, boundingHeight: 190
+    }, 300)).toEqual({ width: 300, height: 190 });
+  });
+
+  it("ignores empty option and hidden-element bounds in the offscreen settings probe", () => {
+    const contentRect = {
+      left: -10000, top: 0, right: -9730, bottom: 190, width: 270, height: 190
+    } as DOMRect;
+    const content = {
+      querySelectorAll: () => [
+        { getBoundingClientRect: () => ({ width: 242, height: 32, right: -9744, bottom: 110 }) },
+        { getBoundingClientRect: () => ({ width: 0, height: 0, right: 0, bottom: 0 }) }
+      ]
+    } as unknown as HTMLElement;
+
+    const extent = measureVisualExtent(content, contentRect);
+    expect(extent).toEqual({ visualWidth: 270, visualHeight: 190 });
+    expect(resolveWindowSize({
+      scrollWidth: 270, scrollHeight: 190,
+      boundingWidth: 270, boundingHeight: 190, ...extent
+    })).toEqual({ width: MIN_WINDOW_WIDTH, height: MIN_WINDOW_HEIGHT });
+  });
+
+  it("still measures visible overflow from an offscreen probe", () => {
+    const contentRect = { left: -10000, top: 0, right: -9730, bottom: 190 } as DOMRect;
+    const content = {
+      querySelectorAll: () => [
+        { getBoundingClientRect: () => ({ width: 300, height: 210, right: -9700, bottom: 210 }) }
+      ]
+    } as unknown as HTMLElement;
+    expect(measureVisualExtent(content, contentRect)).toEqual({ visualWidth: 300, visualHeight: 210 });
+  });
+
   it("keeps the measurement-failure fallback when content fits", () => {
     expect(
       resolveWindowSize({

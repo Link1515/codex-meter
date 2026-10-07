@@ -14,7 +14,8 @@ use std::os::windows::process::CommandExt;
 use crate::codex::{
     parser::parser_for,
     types::{
-        current_timestamp, CliUsageConfig, CodexUsageSnapshot, UsageLimitSnapshot, UsageStatus,
+        current_timestamp, CliUsageConfig, CodexUsageSnapshot, ExecutionMode, UsageLimitSnapshot,
+        UsageStatus,
     },
 };
 
@@ -75,7 +76,9 @@ pub fn fetch_codex_usage(config: &CliUsageConfig) -> CodexUsageSnapshot {
 }
 
 fn should_try_oauth_usage(config: &CliUsageConfig) -> bool {
-    is_app_server_rpc_config(config) && config.codex_command.trim() != DEV_MOCK_COMMAND_ALIAS
+    config.execution_mode == ExecutionMode::Native
+        && is_app_server_rpc_config(config)
+        && config.codex_command.trim() != DEV_MOCK_COMMAND_ALIAS
 }
 
 fn is_authentication_error(message: &str) -> bool {
@@ -568,6 +571,16 @@ fn command_from_spec(command_spec: &CommandSpec) -> Command {
 fn command_spec(config: &CliUsageConfig) -> io::Result<CommandSpec> {
     let command = config.codex_command.trim();
 
+    if config.execution_mode == ExecutionMode::Wsl {
+        if !cfg!(windows) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "WSL mode requires Windows",
+            ));
+        }
+        return Ok(wsl_command_spec(config));
+    }
+
     if command == DEV_MOCK_COMMAND_ALIAS {
         return dev_mock_command_spec(&config.usage_args);
     }
@@ -587,6 +600,38 @@ fn command_spec(config: &CliUsageConfig) -> io::Result<CommandSpec> {
         program: resolve_program(command),
         args,
     })
+}
+
+fn wsl_command_spec(config: &CliUsageConfig) -> CommandSpec {
+    let mut args = Vec::new();
+    for (flag, value) in [
+        ("--distribution", &config.wsl_distribution),
+        ("--user", &config.wsl_user),
+    ] {
+        if !value.trim().is_empty() {
+            args.extend([flag.to_string(), value.trim().to_string()]);
+        }
+    }
+    // A fixed shell program loads the same PATH as an interactive Codex session.
+    // All user input stays in positional arguments, never in shell source.
+    args.extend(
+        [
+            "--cd",
+            "~",
+            "--exec",
+            "bash",
+            "-lic",
+            "exec \"$@\"",
+            "codex-meter",
+        ]
+        .map(str::to_string),
+    );
+    args.push(config.codex_command.trim().to_string());
+    args.extend(config.usage_args.clone());
+    CommandSpec {
+        program: "wsl.exe".to_string(),
+        args,
+    }
 }
 
 fn resolve_program(command: &str) -> String {
@@ -785,9 +830,69 @@ mod tests {
     };
     use crate::codex::types::{CliUsageConfig, ParserMode, UsageStatus};
 
+    fn wsl_config() -> CliUsageConfig {
+        CliUsageConfig {
+            execution_mode: super::ExecutionMode::Wsl,
+            wsl_distribution: String::new(),
+            wsl_user: String::new(),
+            codex_command: "codex".into(),
+            usage_args: vec!["app-server".into()],
+            timeout_seconds: 20,
+            parser_mode: ParserMode::Json,
+        }
+    }
+
+    #[test]
+    fn wsl_uses_positional_arguments_and_the_selected_account() {
+        let mut config = wsl_config();
+        config.wsl_distribution = " Ubuntu ".into();
+        config.wsl_user = "terry".into();
+        config.codex_command = "/home/terry/a b/codex".into();
+        config
+            .usage_args
+            .push("$(touch /tmp/should-not-exist)".into());
+        let spec = super::wsl_command_spec(&config);
+        assert_eq!(spec.program, "wsl.exe");
+        assert_eq!(
+            spec.args,
+            [
+                "--distribution",
+                "Ubuntu",
+                "--user",
+                "terry",
+                "--cd",
+                "~",
+                "--exec",
+                "bash",
+                "-lic",
+                "exec \"$@\"",
+                "codex-meter",
+                "/home/terry/a b/codex",
+                "app-server",
+                "$(touch /tmp/should-not-exist)"
+            ]
+        );
+        assert!(!super::should_try_oauth_usage(&config));
+        config.execution_mode = super::ExecutionMode::Native;
+        assert!(super::should_try_oauth_usage(&config));
+    }
+
+    #[test]
+    fn wsl_defaults_to_the_default_distribution_and_user() {
+        let spec = super::wsl_command_spec(&wsl_config());
+        assert_eq!(&spec.args[..2], ["--cd", "~"]);
+        assert!(!spec
+            .args
+            .iter()
+            .any(|arg| arg == "--distribution" || arg == "--user"));
+    }
+
     #[test]
     fn fetches_usage_from_dev_mock_alias() {
         let snapshot = fetch_codex_usage(&CliUsageConfig {
+            execution_mode: Default::default(),
+            wsl_distribution: String::new(),
+            wsl_user: String::new(),
             codex_command: DEV_MOCK_COMMAND_ALIAS.to_string(),
             usage_args: Vec::new(),
             timeout_seconds: 10,
@@ -822,6 +927,9 @@ mod tests {
     #[test]
     fn uses_the_configured_oauth_request_timeout() {
         let config = CliUsageConfig {
+            execution_mode: Default::default(),
+            wsl_distribution: String::new(),
+            wsl_user: String::new(),
             codex_command: "codex".to_string(),
             usage_args: vec!["app-server".to_string()],
             timeout_seconds: 45,
@@ -843,6 +951,9 @@ mod tests {
     #[test]
     fn detects_app_server_rpc_config() {
         let config = CliUsageConfig {
+            execution_mode: Default::default(),
+            wsl_distribution: String::new(),
+            wsl_user: String::new(),
             codex_command: "codex".to_string(),
             usage_args: vec![
                 "-s".to_string(),

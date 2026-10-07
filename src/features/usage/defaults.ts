@@ -1,6 +1,9 @@
 import type { CliUsageConfig, CodexUsageSnapshot } from "./types";
 
 export const defaultUsageConfig: CliUsageConfig = {
+  executionMode: "native",
+  wslDistribution: "",
+  wslUser: "",
   codexCommand: "codex",
   usageArgs: ["-s", "read-only", "-a", "never", "app-server"],
   pollIntervalSeconds: 60,

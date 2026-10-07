@@ -244,3 +244,17 @@ button {
     transform: rotate(360deg);
   }
 }
+
+.app-content--settings { min-height: 100vh; }
+.settings-panel { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 0; }
+.settings-panel label { display: flex; flex-direction: column; gap: 4px; min-width: 0; color: #b7c3d0; font-size: 11px; }
+.settings-panel select {
+  width: 100%; min-width: 0; padding: 6px; border: 1px solid #334252; border-radius: 4px;
+  background: #0c1117; color: #e5edf5; font: inherit; user-select: text;
+}
+.settings-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: auto; }
+.settings-actions button { padding: 6px 8px; border: 1px solid #334252; border-radius: 4px; color: #e5edf5; background: #182330; font-size: 11px; cursor: pointer; }
+.settings-actions button[type="submit"] { border-color: #3fbf7f; }
+.settings-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+.settings-error { margin: 0; color: #93a4b7; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.settings-error { color: #f9a66c; max-height: 28px; overflow-y: auto; }
