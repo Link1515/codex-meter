@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { isWslSupported } from "../features/usage/api";
-import { defaultUsageConfig } from "../features/usage/defaults";
 import type { CliUsageConfig } from "../features/usage/types";
 
 type Props = {
@@ -28,7 +27,7 @@ export function UsageSettings({ config, busy, onSave, onCancel }: Props) {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
-      onSave({ ...defaultUsageConfig, executionMode });
+      onSave({ ...config, executionMode });
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unable to save settings");
     }
