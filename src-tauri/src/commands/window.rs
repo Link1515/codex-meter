@@ -172,6 +172,9 @@ pub fn set_window_size(
     resize_result?;
     restore_result?;
 
+    let placement = placement_from_window(&window)?;
+    restore_window_placement(window, placement)?;
+
     Ok(())
 }
 
@@ -229,11 +232,16 @@ pub fn restore_window_placement(
         bounds,
     );
 
-    window
-        .set_position(PhysicalPosition::new(corrected.x, corrected.y))
-        .map_err(|error| {
-            AppError::window_control_failed(format!("Unable to restore window position: {}", error))
-        })?;
+    if corrected.x != placement.x || corrected.y != placement.y {
+        window
+            .set_position(PhysicalPosition::new(corrected.x, corrected.y))
+            .map_err(|error| {
+                AppError::window_control_failed(format!(
+                    "Unable to restore window position: {}",
+                    error
+                ))
+            })?;
+    }
 
     Ok(corrected)
 }

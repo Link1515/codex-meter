@@ -54,4 +54,32 @@ mod tests {
         assert_eq!(corrected.x, 920);
         assert_eq!(corrected.y, 0);
     }
+
+    #[test]
+    fn corrects_position_after_window_grows_near_display_edge() {
+        let bounds = VisibleBounds {
+            x: 0,
+            y: 0,
+            width: 1280,
+            height: 720,
+        };
+        let original = WindowPlacementState {
+            x: 960,
+            y: 500,
+            width: 300,
+            height: 190,
+            display_id: None,
+            updated_at: "now".to_string(),
+        };
+        assert_eq!(ensure_visible(&original, bounds).x, original.x);
+        assert_eq!(ensure_visible(&original, bounds).y, original.y);
+
+        let grown = WindowPlacementState {
+            width: 420,
+            height: 360,
+            ..original
+        };
+        let corrected = ensure_visible(&grown, bounds);
+        assert_eq!((corrected.x, corrected.y), (860, 360));
+    }
 }
