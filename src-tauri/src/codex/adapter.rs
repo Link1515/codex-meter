@@ -20,6 +20,9 @@ use crate::codex::{
 };
 
 pub const DEV_MOCK_COMMAND_ALIAS: &str = "__codex_meter_mock__";
+const MAX_COMMAND_OUTPUT_BYTES: usize = 256 * 1024;
+const MAX_RPC_LINE_BYTES: usize = 64 * 1024;
+const MAX_QUEUED_RPC_LINES: usize = 16;
 
 static OAUTH_USAGE_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
 
@@ -207,13 +210,8 @@ fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageS
         io::Error::new(io::ErrorKind::Other, "Codex app-server stderr unavailable")
     })?;
 
-    let (line_tx, line_rx) = mpsc::channel::<String>();
-    thread::spawn(move || {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines().map_while(Result::ok) {
-            let _ = line_tx.send(line);
-        }
-    });
+    let (line_tx, line_rx) = mpsc::sync_channel::<io::Result<String>>(MAX_QUEUED_RPC_LINES);
+    thread::spawn(move || forward_rpc_lines(stdout, line_tx));
 
     let stderr_reader = thread::spawn(move || read_process_output(stderr));
 
@@ -246,9 +244,46 @@ fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageS
 
     let _ = child.kill();
     let _ = child.wait();
-    let stderr = join_process_output(stderr_reader).unwrap_or_default();
+    let stderr_result = join_process_output(stderr_reader);
 
-    rpc_result.map_err(|error| app_server_error_with_stderr(error, &stderr))
+    match rpc_result {
+        Ok(snapshot) => {
+            stderr_result?;
+            Ok(snapshot)
+        }
+        Err(error) => Err(app_server_error_with_stderr(
+            error,
+            &stderr_result.unwrap_or_default(),
+        )),
+    }
+}
+
+fn forward_rpc_lines(reader: impl Read, sender: mpsc::SyncSender<io::Result<String>>) {
+    let mut reader = BufReader::new(reader);
+    loop {
+        let mut line = Vec::new();
+        let result = (&mut reader)
+            .take((MAX_RPC_LINE_BYTES + 1) as u64)
+            .read_until(b'\n', &mut line);
+        let next_line = match result {
+            Ok(0) => break,
+            Ok(count) if count > MAX_RPC_LINE_BYTES => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Codex app-server output line exceeded the size limit",
+            )),
+            Ok(_) => String::from_utf8(line).map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Codex app-server output was not UTF-8",
+                )
+            }),
+            Err(error) => Err(error),
+        };
+        let failed = next_line.is_err();
+        if sender.send(next_line).is_err() || failed {
+            break;
+        }
+    }
 }
 
 fn app_server_error_with_stderr(error: io::Error, stderr: &str) -> io::Error {
@@ -289,7 +324,7 @@ fn send_rpc_notification(stdin: &mut impl Write, method: &str) -> io::Result<()>
 }
 
 fn read_rpc_response(
-    line_rx: &mpsc::Receiver<String>,
+    line_rx: &mpsc::Receiver<io::Result<String>>,
     id: u64,
     started_at: Instant,
     timeout: Duration,
@@ -309,7 +344,7 @@ fn read_rpc_response(
                     io::ErrorKind::UnexpectedEof,
                     "Codex app-server closed stdout",
                 ),
-            })?;
+            })??;
 
         let value = match serde_json::from_str::<serde_json::Value>(&line) {
             Ok(value) => value,
@@ -540,9 +575,17 @@ pub fn run_command(config: &CliUsageConfig) -> io::Result<CommandRunResult> {
     }
 }
 
-fn read_process_output(mut reader: impl Read) -> io::Result<String> {
+fn read_process_output(reader: impl Read) -> io::Result<String> {
     let mut output = Vec::new();
-    reader.read_to_end(&mut output)?;
+    reader
+        .take((MAX_COMMAND_OUTPUT_BYTES + 1) as u64)
+        .read_to_end(&mut output)?;
+    if output.len() > MAX_COMMAND_OUTPUT_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Codex CLI output exceeded the size limit",
+        ));
+    }
     Ok(String::from_utf8_lossy(&output).to_string())
 }
 
@@ -783,7 +826,7 @@ fn snapshot_from_command_result(
 #[cfg(test)]
 mod tests {
     use std::{
-        io,
+        io::{self, Cursor},
         sync::mpsc,
         time::{Duration, Instant},
     };
@@ -923,6 +966,35 @@ mod tests {
     }
 
     #[test]
+    fn limits_command_output_without_truncating_valid_output() {
+        let at_limit = vec![b'a'; super::MAX_COMMAND_OUTPUT_BYTES];
+        assert_eq!(
+            super::read_process_output(Cursor::new(at_limit))
+                .expect("Output at the limit should be accepted")
+                .len(),
+            super::MAX_COMMAND_OUTPUT_BYTES
+        );
+
+        let over_limit = vec![b'a'; super::MAX_COMMAND_OUTPUT_BYTES + 1];
+        let error = super::read_process_output(Cursor::new(over_limit))
+            .expect_err("Oversized output should be rejected");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn rejects_oversized_app_server_lines() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let over_limit = vec![b'a'; super::MAX_RPC_LINE_BYTES + 1];
+        super::forward_rpc_lines(Cursor::new(over_limit), sender);
+
+        let error = receiver
+            .recv()
+            .expect("Oversized line should be reported")
+            .expect_err("Oversized line should be rejected");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
     fn detects_app_server_rpc_config() {
         let config = CliUsageConfig {
             execution_mode: Default::default(),
@@ -973,7 +1045,9 @@ mod tests {
     fn hides_rpc_error_messages() {
         let (sender, receiver) = mpsc::channel();
         sender
-            .send(r#"{"id":1,"error":{"message":"sk-proj-secret-value"}}"#.to_string())
+            .send(Ok(
+                r#"{"id":1,"error":{"message":"sk-proj-secret-value"}}"#.to_string()
+            ))
             .expect("RPC response should be queued");
 
         let error = super::read_rpc_response(&receiver, 1, Instant::now(), Duration::from_secs(1))
