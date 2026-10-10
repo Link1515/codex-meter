@@ -1,7 +1,7 @@
 use crate::codex::{
     adapter::fetch_codex_usage,
     errors::AppError,
-    types::{CliUsageConfig, CodexUsageSnapshot, ExecutionMode},
+    types::{CliUsageConfig, CodexUsageSnapshot, ExecutionMode, UsageStatus},
 };
 
 #[tauri::command]
@@ -10,9 +10,17 @@ pub fn is_wsl_supported() -> bool {
 }
 
 #[tauri::command]
-pub fn fetch_usage(config: CliUsageConfig) -> Result<CodexUsageSnapshot, AppError> {
+pub async fn fetch_usage(config: CliUsageConfig) -> Result<CodexUsageSnapshot, AppError> {
     validate_config(&config)?;
-    Ok(fetch_codex_usage(&config))
+
+    let result = tauri::async_runtime::spawn_blocking(move || fetch_codex_usage(&config)).await;
+    Ok(match result {
+        Ok(snapshot) => snapshot,
+        Err(_) => CodexUsageSnapshot::with_status(
+            UsageStatus::CommandError,
+            Some("Codex usage worker failed".to_string()),
+        ),
+    })
 }
 
 fn validate_config(config: &CliUsageConfig) -> Result<(), AppError> {
