@@ -44,10 +44,14 @@ pub fn fetch_codex_usage(config: &CliUsageConfig) -> CodexUsageSnapshot {
         );
     }
 
+    let deadline = Instant::now() + Duration::from_secs(config.timeout_seconds.clamp(1, 120));
     let result = if should_try_oauth_usage(config) {
-        fetch_oauth_usage(config).or_else(|_| fetch_app_server_rpc_usage(config))
+        fetch_oauth_usage(deadline).or_else(|_| {
+            remaining_timeout(deadline)?;
+            fetch_app_server_rpc_usage(config, deadline)
+        })
     } else if is_app_server_rpc_config(config) {
-        fetch_app_server_rpc_usage(config)
+        fetch_app_server_rpc_usage(config, deadline)
     } else {
         run_command(config).map(|result| snapshot_from_command_result(config, result))
     };
@@ -90,12 +94,12 @@ fn is_authentication_error(message: &str) -> bool {
         || lower.contains("please log in")
 }
 
-fn fetch_oauth_usage(config: &CliUsageConfig) -> io::Result<CodexUsageSnapshot> {
+fn fetch_oauth_usage(deadline: Instant) -> io::Result<CodexUsageSnapshot> {
     let access_token = read_codex_access_token()?;
     let client = oauth_usage_client()?;
     let response = client
         .get("https://chatgpt.com/backend-api/wham/usage")
-        .timeout(oauth_request_timeout(config))
+        .timeout(remaining_timeout(deadline)?)
         .bearer_auth(access_token)
         .send()
         .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
@@ -119,6 +123,7 @@ fn fetch_oauth_usage(config: &CliUsageConfig) -> io::Result<CodexUsageSnapshot> 
         .json::<serde_json::Value>()
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
 
+    remaining_timeout(deadline)?;
     snapshot_from_oauth_usage(value)
 }
 
@@ -141,8 +146,11 @@ fn oauth_usage_client() -> io::Result<&'static reqwest::blocking::Client> {
     })
 }
 
-fn oauth_request_timeout(config: &CliUsageConfig) -> Duration {
-    Duration::from_secs(config.timeout_seconds.max(1))
+fn remaining_timeout(deadline: Instant) -> io::Result<Duration> {
+    deadline
+        .checked_duration_since(Instant::now())
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "Codex usage request timed out"))
 }
 
 fn read_codex_access_token() -> io::Result<String> {
@@ -189,9 +197,11 @@ pub(crate) fn is_app_server_rpc_config(config: &CliUsageConfig) -> bool {
         .any(|arg| arg.trim().eq_ignore_ascii_case("app-server"))
 }
 
-fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageSnapshot> {
-    let timeout = Duration::from_secs(config.timeout_seconds.max(1));
-    let started_at = Instant::now();
+fn fetch_app_server_rpc_usage(
+    config: &CliUsageConfig,
+    deadline: Instant,
+) -> io::Result<CodexUsageSnapshot> {
+    remaining_timeout(deadline)?;
     let command_spec = command_spec(config)?;
     let mut command = command_from_spec(&command_spec);
     let mut child = command
@@ -227,15 +237,15 @@ fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageS
                 }
             })),
         )?;
-        let _ = read_rpc_response(&line_rx, 1, started_at, timeout)?;
+        let _ = read_rpc_response(&line_rx, 1, deadline)?;
 
         send_rpc_notification(&mut stdin, "initialized")?;
 
         send_rpc_request(&mut stdin, 2, "account/rateLimits/read", None)?;
-        let rate_limits = read_rpc_response(&line_rx, 2, started_at, timeout)?;
+        let rate_limits = read_rpc_response(&line_rx, 2, deadline)?;
 
         send_rpc_request(&mut stdin, 3, "account/read", None)?;
-        let account = read_rpc_response(&line_rx, 3, started_at, timeout)
+        let account = read_rpc_response(&line_rx, 3, deadline)
             .ok()
             .and_then(|value| serde_json::from_value::<RpcAccountResult>(value).ok());
 
@@ -244,7 +254,12 @@ fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageS
 
     let _ = child.kill();
     let _ = child.wait();
-    let stderr_result = join_process_output_within(stderr_reader, Duration::from_millis(100));
+    let stderr_result = join_process_output_within(
+        stderr_reader,
+        remaining_timeout(deadline)
+            .unwrap_or_default()
+            .min(Duration::from_millis(100)),
+    );
 
     match rpc_result {
         Ok(snapshot) => {
@@ -329,13 +344,10 @@ fn send_rpc_notification(stdin: &mut impl Write, method: &str) -> io::Result<()>
 fn read_rpc_response(
     line_rx: &mpsc::Receiver<io::Result<String>>,
     id: u64,
-    started_at: Instant,
-    timeout: Duration,
+    deadline: Instant,
 ) -> io::Result<serde_json::Value> {
     loop {
-        let remaining = timeout.checked_sub(started_at.elapsed()).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::TimedOut, "Codex app-server RPC timed out")
-        })?;
+        let remaining = remaining_timeout(deadline)?;
 
         let line = line_rx
             .recv_timeout(remaining)
@@ -868,7 +880,7 @@ mod tests {
 
     use super::{
         app_server_error_with_stderr, fetch_codex_usage, is_app_server_rpc_config,
-        oauth_request_timeout, oauth_usage_client, snapshot_from_oauth_usage,
+        oauth_usage_client, remaining_timeout, snapshot_from_oauth_usage,
         snapshot_from_rate_limits, CommandRunResult, DEV_MOCK_COMMAND_ALIAS,
     };
     use crate::codex::types::{CliUsageConfig, ParserMode, UsageStatus};
@@ -1018,18 +1030,40 @@ mod tests {
     }
 
     #[test]
-    fn uses_the_configured_oauth_request_timeout() {
+    fn reports_when_the_shared_usage_deadline_expires() {
+        let deadline = Instant::now() + Duration::from_secs(45);
+        let remaining = remaining_timeout(deadline).expect("future deadline should have time left");
+        assert!(remaining <= Duration::from_secs(45));
+        assert!(remaining > Duration::from_secs(44));
+        assert_eq!(
+            remaining_timeout(Instant::now() - Duration::from_millis(1))
+                .expect_err("expired deadline should time out")
+                .kind(),
+            io::ErrorKind::TimedOut
+        );
+    }
+
+    #[test]
+    fn app_server_uses_only_the_remaining_usage_time() {
         let config = CliUsageConfig {
             execution_mode: Default::default(),
             wsl_distribution: String::new(),
             wsl_user: String::new(),
-            codex_command: "codex".to_string(),
-            usage_args: vec!["app-server".to_string()],
-            timeout_seconds: 45,
+            codex_command: "node".to_string(),
+            usage_args: vec![
+                "-e".to_string(),
+                "setTimeout(() => {}, 4000)".to_string(),
+                "app-server".to_string(),
+            ],
+            timeout_seconds: 10,
             parser_mode: ParserMode::Json,
         };
-
-        assert_eq!(oauth_request_timeout(&config), Duration::from_secs(45));
+        let started_at = Instant::now();
+        let deadline = started_at + Duration::from_millis(500);
+        let error = super::fetch_app_server_rpc_usage(&config, deadline)
+            .expect_err("unresponsive app-server should time out at the shared deadline");
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(started_at.elapsed() < Duration::from_secs(2));
     }
 
     #[test]
@@ -1135,7 +1169,7 @@ mod tests {
             ))
             .expect("RPC response should be queued");
 
-        let error = super::read_rpc_response(&receiver, 1, Instant::now(), Duration::from_secs(1))
+        let error = super::read_rpc_response(&receiver, 1, Instant::now() + Duration::from_secs(1))
             .expect_err("RPC error should fail the request");
 
         assert_eq!(error.to_string(), "Codex app-server RPC request failed");
