@@ -59,18 +59,15 @@ pub fn fetch_codex_usage(config: &CliUsageConfig) -> CodexUsageSnapshot {
             UsageStatus::Timeout,
             Some("Codex CLI command timed out".to_string()),
         ),
-        Err(error) if is_authentication_error(&error.to_string()) => {
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             CodexUsageSnapshot::with_status(
                 UsageStatus::NotAuthenticated,
                 Some("Codex CLI is not authenticated".to_string()),
             )
         }
-        Err(error) => CodexUsageSnapshot::with_status(
+        Err(_) => CodexUsageSnapshot::with_status(
             UsageStatus::CommandError,
-            Some(format!(
-                "Codex CLI command failed: {}",
-                sanitize_message(&error.to_string())
-            )),
+            Some("Codex CLI command failed".to_string()),
         ),
     }
 }
@@ -255,14 +252,14 @@ fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageS
 }
 
 fn app_server_error_with_stderr(error: io::Error, stderr: &str) -> io::Error {
-    if stderr.trim().is_empty() {
-        return error;
+    if error.kind() == io::ErrorKind::PermissionDenied || is_authentication_error(stderr) {
+        return io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Codex CLI is not authenticated",
+        );
     }
 
-    io::Error::new(
-        error.kind(),
-        format!("{}: {}", error, sanitize_message(&summary_text(stderr, ""))),
-    )
+    error
 }
 
 fn send_rpc_request(
@@ -328,10 +325,12 @@ fn read_rpc_response(
                 .get("message")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("Codex app-server RPC request failed");
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                sanitize_message(message),
-            ));
+            let kind = if is_authentication_error(message) {
+                io::ErrorKind::PermissionDenied
+            } else {
+                io::ErrorKind::Other
+            };
+            return Err(io::Error::new(kind, "Codex app-server RPC request failed"));
         }
 
         return value.get("result").cloned().ok_or_else(|| {
@@ -769,64 +768,30 @@ fn snapshot_from_command_result(
             UsageStatus::CommandError
         };
 
-        return CodexUsageSnapshot::with_status(
-            status,
-            Some(sanitize_message(&summary_text(
-                &result.stderr,
-                &result.stdout,
-            ))),
-        );
+        let message = if status == UsageStatus::NotAuthenticated {
+            "Codex CLI is not authenticated"
+        } else {
+            "Codex CLI command failed"
+        };
+        return CodexUsageSnapshot::with_status(status, Some(message.to_string()));
     }
 
     let parser = parser_for(&config.parser_mode);
     parser.parse(&result.stdout)
 }
 
-pub fn summary_text(primary: &str, fallback: &str) -> String {
-    let source = if primary.trim().is_empty() {
-        fallback
-    } else {
-        primary
-    };
-    let trimmed = source.trim();
-
-    if trimmed.chars().count() > 240 {
-        format!("{}...", trimmed.chars().take(240).collect::<String>())
-    } else if trimmed.is_empty() {
-        "Codex CLI returned no output".to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-pub fn sanitize_message(message: &str) -> String {
-    let sensitive_terms = [
-        "api_key",
-        "apikey",
-        "authorization",
-        "access_token",
-        "refresh_token",
-        "session",
-        "cookie",
-        "token",
-    ];
-
-    let lower = message.to_lowercase();
-    if sensitive_terms.iter().any(|term| lower.contains(term)) {
-        "Command failed. Sensitive details were redacted.".to_string()
-    } else {
-        message.to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::{io, time::Duration};
+    use std::{
+        io,
+        sync::mpsc,
+        time::{Duration, Instant},
+    };
 
     use super::{
         app_server_error_with_stderr, fetch_codex_usage, is_app_server_rpc_config,
         oauth_request_timeout, oauth_usage_client, snapshot_from_oauth_usage,
-        snapshot_from_rate_limits, summary_text, DEV_MOCK_COMMAND_ALIAS,
+        snapshot_from_rate_limits, CommandRunResult, DEV_MOCK_COMMAND_ALIAS,
     };
     use crate::codex::types::{CliUsageConfig, ParserMode, UsageStatus};
 
@@ -940,12 +905,21 @@ mod tests {
     }
 
     #[test]
-    fn truncates_unicode_summary_on_char_boundary() {
-        let message = "錯".repeat(241);
-        let summary = summary_text(&message, "");
+    fn hides_cli_error_output_from_snapshots() {
+        let snapshot = super::snapshot_from_command_result(
+            &wsl_config(),
+            CommandRunResult {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "sk-proj-secret-value".to_string(),
+            },
+        );
 
-        assert!(summary.ends_with("..."));
-        assert_eq!(summary.trim_end_matches("...").chars().count(), 240);
+        assert_eq!(snapshot.status, UsageStatus::CommandError);
+        assert_eq!(
+            snapshot.error_message.as_deref(),
+            Some("Codex CLI command failed")
+        );
     }
 
     #[test]
@@ -968,20 +942,44 @@ mod tests {
     }
 
     #[test]
-    fn includes_app_server_stderr_when_stdout_closes() {
+    fn hides_app_server_stderr_when_stdout_closes() {
         let error = app_server_error_with_stderr(
             io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "Codex app-server closed stdout",
             ),
-            "error: invalid value 'untrusted' for '--ask-for-approval'",
+            "sk-proj-secret-value",
         );
 
         assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
-        assert_eq!(
-            error.to_string(),
-            "Codex app-server closed stdout: error: invalid value 'untrusted' for '--ask-for-approval'"
+        assert_eq!(error.to_string(), "Codex app-server closed stdout");
+    }
+
+    #[test]
+    fn classifies_app_server_authentication_errors_without_exposing_stderr() {
+        let error = app_server_error_with_stderr(
+            io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "Codex app-server closed stdout",
+            ),
+            "not authenticated: sk-proj-secret-value",
         );
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(error.to_string(), "Codex CLI is not authenticated");
+    }
+
+    #[test]
+    fn hides_rpc_error_messages() {
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(r#"{"id":1,"error":{"message":"sk-proj-secret-value"}}"#.to_string())
+            .expect("RPC response should be queued");
+
+        let error = super::read_rpc_response(&receiver, 1, Instant::now(), Duration::from_secs(1))
+            .expect_err("RPC error should fail the request");
+
+        assert_eq!(error.to_string(), "Codex app-server RPC request failed");
     }
 
     #[test]

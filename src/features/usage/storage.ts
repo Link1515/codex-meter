@@ -25,12 +25,23 @@ export function loadCachedSnapshot(): CodexUsageSnapshot {
   }
 
   try {
-    return JSON.parse(raw) as CodexUsageSnapshot;
+    const snapshot = JSON.parse(raw) as CodexUsageSnapshot;
+    const safeSnapshot = withoutErrorMessage(snapshot);
+    if (snapshot.errorMessage !== undefined) {
+      localStorage.setItem(snapshotKey, JSON.stringify(safeSnapshot));
+    }
+    return safeSnapshot;
   } catch {
     return emptySnapshot;
   }
 }
 
 export function saveCachedSnapshot(snapshot: CodexUsageSnapshot): void {
-  localStorage.setItem(snapshotKey, JSON.stringify(snapshot));
+  localStorage.setItem(snapshotKey, JSON.stringify(withoutErrorMessage(snapshot)));
+}
+
+function withoutErrorMessage(snapshot: CodexUsageSnapshot): CodexUsageSnapshot {
+  const safeSnapshot = { ...snapshot };
+  delete safeSnapshot.errorMessage;
+  return safeSnapshot;
 }

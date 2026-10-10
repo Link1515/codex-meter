@@ -84,12 +84,12 @@ function App() {
     try {
       const nextSnapshot = await fetchUsage(config);
       return applyUsageSnapshot(nextSnapshot);
-    } catch (error) {
+    } catch {
       const fallback: CodexUsageSnapshot = {
         ...currentSnapshot,
         source: "codex-cli",
         status: "command_error",
-        errorMessage: error instanceof Error ? error.message : "Unable to fetch Codex usage"
+        errorMessage: "Unable to fetch Codex usage"
       };
       snapshotRef.current = fallback;
       setUsageState({ kind: "failed", snapshot: fallback });

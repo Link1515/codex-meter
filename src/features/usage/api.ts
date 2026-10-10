@@ -25,26 +25,7 @@ export async function fetchUsage(config: CliUsageConfig): Promise<CodexUsageSnap
 
   try {
     return await invoke<CodexUsageSnapshot>("fetch_usage", { config: backendConfig });
-  } catch (error) {
-    throw new Error(messageFromInvokeError(error));
+  } catch {
+    throw new Error("Unable to fetch Codex usage");
   }
-}
-
-function messageFromInvokeError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
-  if (typeof error === "object" && error !== null && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) {
-      return message;
-    }
-  }
-
-  return "Unable to fetch Codex usage";
 }
