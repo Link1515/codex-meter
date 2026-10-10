@@ -17,6 +17,7 @@ import {
 import {
   canStartManualRefresh,
   mergeUsageRefreshResult,
+  nextAutomaticRefreshDelayMs,
   nextUsagePollingCheckDelayMs
 } from "../features/usage/refresh";
 import {
@@ -43,6 +44,7 @@ function App() {
   const [pinBusy, setPinBusy] = useState(false);
   const isFetchingUsage = useRef(false);
   const consecutiveRefreshFailureCount = useRef(0);
+  const lastUsageFetchCompletedAt = useRef<number | undefined>(undefined);
   const lastManualRefreshAt = useRef(0);
   const lastRequestedConfig = useRef<CliUsageConfig | undefined>(undefined);
   const snapshotRef = useRef(usageState.snapshot);
@@ -96,6 +98,7 @@ function App() {
       consecutiveRefreshFailureCount.current += 1;
       return fallback;
     } finally {
+      lastUsageFetchCompletedAt.current = performance.now();
       isFetchingUsage.current = false;
     }
   }, [applyUsageSnapshot, config]);
@@ -155,8 +158,20 @@ function App() {
       return;
     }
 
+    const lastCompletedAt = lastUsageFetchCompletedAt.current;
+    if (
+      lastCompletedAt !== undefined &&
+      performance.now() - lastCompletedAt < nextAutomaticRefreshDelayMs(
+        snapshotRef.current,
+        config.pollIntervalSeconds,
+        consecutiveRefreshFailureCount.current
+      )
+    ) {
+      return;
+    }
+
     void refreshUsage();
-  }, [refreshUsage, windowActivationCount]);
+  }, [config.pollIntervalSeconds, refreshUsage, windowActivationCount]);
 
   useEffect(() => {
     if (!isTauri()) {

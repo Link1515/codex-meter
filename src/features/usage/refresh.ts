@@ -46,7 +46,7 @@ export function nextAutomaticRefreshDelayMs(
     const retryAttempt = Math.max(0, consecutiveFailureCount - 1);
     const retryDelayMs = retryBackoffBaseMs * 2 ** retryAttempt;
 
-    return Math.min(Math.max(configuredDelayMs, retryDelayMs), retryBackoffMaxMs);
+    return Math.max(configuredDelayMs, Math.min(retryDelayMs, retryBackoffMaxMs));
   }
 
   return Math.max(configuredDelayMs, configurationRetryDelayMs);

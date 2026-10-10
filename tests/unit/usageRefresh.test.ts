@@ -71,6 +71,7 @@ describe("usage refresh controls", () => {
     expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("command_error"), 60, 1)).toBe(90_000);
     expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("timeout"), 60, 2)).toBe(180_000);
     expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("command_error"), 60, 10)).toBe(retryBackoffMaxMs);
+    expect(nextAutomaticRefreshDelayMs(snapshotWithStatus("command_error"), 900, 10)).toBe(900_000);
   });
 
   it("slows down automatic refresh for configuration and authentication states", () => {
