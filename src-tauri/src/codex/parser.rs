@@ -21,16 +21,8 @@ impl UsageParser for TextUsageParser {
             );
         }
 
-        let lower = trimmed.to_lowercase();
-        if lower.contains("not logged in")
-            || lower.contains("not authenticated")
-            || lower.contains("please login")
-            || lower.contains("please log in")
-        {
-            return CodexUsageSnapshot::with_status(
-                UsageStatus::NotAuthenticated,
-                Some("Codex CLI is not authenticated".to_string()),
-            );
+        if is_authentication_output(trimmed) {
+            return not_authenticated_snapshot();
         }
 
         let mut snapshot = CodexUsageSnapshot::with_status(UsageStatus::Ok, None);
@@ -104,6 +96,9 @@ impl UsageParser for JsonUsageParser {
         let value = match parsed {
             Ok(value) => value,
             Err(_) => {
+                if is_authentication_output(trimmed) {
+                    return not_authenticated_snapshot();
+                }
                 return CodexUsageSnapshot::with_status(
                     UsageStatus::ParseError,
                     Some("CLI JSON output could not be parsed".to_string()),
@@ -153,6 +148,9 @@ impl UsageParser for JsonUsageParser {
         snapshot.fetched_at = current_timestamp();
 
         if !snapshot_has_usage_limit(&snapshot) {
+            if is_authentication_output(trimmed) {
+                return not_authenticated_snapshot();
+            }
             return CodexUsageSnapshot::with_status(
                 UsageStatus::ParseError,
                 Some("No usage or remaining percentage found in JSON output".to_string()),
@@ -161,6 +159,22 @@ impl UsageParser for JsonUsageParser {
 
         snapshot
     }
+}
+
+fn is_authentication_output(input: &str) -> bool {
+    let lower = input.to_lowercase();
+    lower.contains("authentication required")
+        || lower.contains("not authenticated")
+        || lower.contains("not logged in")
+        || lower.contains("please login")
+        || lower.contains("please log in")
+}
+
+fn not_authenticated_snapshot() -> CodexUsageSnapshot {
+    CodexUsageSnapshot::with_status(
+        UsageStatus::NotAuthenticated,
+        Some("Codex CLI is not authenticated".to_string()),
+    )
 }
 
 pub fn parser_for(mode: &ParserMode) -> Box<dyn UsageParser> {
@@ -332,6 +346,36 @@ mod tests {
                 .as_ref()
                 .and_then(|limit| limit.remaining_percent),
             Some(72.0)
+        );
+    }
+
+    #[test]
+    fn classifies_authentication_output_in_json_mode() {
+        for output in [
+            "Not authenticated: sk-secret-value",
+            "Please log in to Codex",
+            r#"{"error":"authentication required: sk-secret-value"}"#,
+        ] {
+            let snapshot = JsonUsageParser.parse(output);
+            assert_eq!(snapshot.status, UsageStatus::NotAuthenticated);
+            assert_eq!(
+                snapshot.error_message.as_deref(),
+                Some("Codex CLI is not authenticated")
+            );
+        }
+    }
+
+    #[test]
+    fn keeps_other_json_failures_and_valid_usage_distinct() {
+        assert_eq!(
+            JsonUsageParser.parse("not valid JSON").status,
+            UsageStatus::ParseError
+        );
+        assert_eq!(
+            JsonUsageParser
+                .parse(r#"{"usagePercent":28,"model":"not authenticated"}"#)
+                .status,
+            UsageStatus::Ok
         );
     }
 
