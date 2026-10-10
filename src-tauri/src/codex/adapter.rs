@@ -2,7 +2,7 @@ use std::{
     env, fs,
     io::{self, BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::{mpsc, OnceLock},
     thread,
     time::{Duration, Instant},
@@ -244,7 +244,7 @@ fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageS
 
     let _ = child.kill();
     let _ = child.wait();
-    let stderr_result = join_process_output(stderr_reader);
+    let stderr_result = join_process_output_within(stderr_reader, Duration::from_millis(100));
 
     match rpc_result {
         Ok(snapshot) => {
@@ -253,7 +253,10 @@ fn fetch_app_server_rpc_usage(config: &CliUsageConfig) -> io::Result<CodexUsageS
         }
         Err(error) => Err(app_server_error_with_stderr(
             error,
-            &stderr_result.unwrap_or_default(),
+            stderr_result
+                .unwrap_or_default()
+                .as_deref()
+                .unwrap_or_default(),
         )),
     }
 }
@@ -552,22 +555,40 @@ pub fn run_command(config: &CliUsageConfig) -> io::Result<CommandRunResult> {
     let stdout_reader = thread::spawn(move || read_process_output(stdout));
     let stderr_reader = thread::spawn(move || read_process_output(stderr));
 
+    wait_for_command_result(child, stdout_reader, stderr_reader, timeout)
+}
+
+fn wait_for_command_result(
+    mut child: Child,
+    stdout_reader: thread::JoinHandle<io::Result<String>>,
+    stderr_reader: thread::JoinHandle<io::Result<String>>,
+    timeout: Duration,
+) -> io::Result<CommandRunResult> {
     let started_at = Instant::now();
+    let mut exit_status = None;
     loop {
-        if let Some(status) = child.try_wait()? {
-            let _ = child.wait();
-            return Ok(CommandRunResult {
-                exit_code: status.code(),
-                stdout: join_process_output(stdout_reader)?,
-                stderr: join_process_output(stderr_reader)?,
-            });
+        if exit_status.is_none() {
+            exit_status = child.try_wait()?;
+        }
+
+        if let Some(status) = exit_status.as_ref() {
+            if stdout_reader.is_finished() && stderr_reader.is_finished() {
+                let _ = child.wait();
+                return Ok(CommandRunResult {
+                    exit_code: status.code(),
+                    stdout: join_process_output(stdout_reader)?,
+                    stderr: join_process_output(stderr_reader)?,
+                });
+            }
         }
 
         if started_at.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = join_process_output(stdout_reader);
-            let _ = join_process_output(stderr_reader);
+            if exit_status.is_none() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            // Joining a reader here can block indefinitely if a descendant
+            // inherited stdout or stderr. Dropping the handles detaches them.
             return Err(io::Error::new(io::ErrorKind::TimedOut, "command timed out"));
         }
 
@@ -593,6 +614,20 @@ fn join_process_output(reader: thread::JoinHandle<io::Result<String>>) -> io::Re
     reader
         .join()
         .map_err(|_| io::Error::new(io::ErrorKind::Other, "command output reader panicked"))?
+}
+
+fn join_process_output_within(
+    reader: thread::JoinHandle<io::Result<String>>,
+    wait: Duration,
+) -> io::Result<Option<String>> {
+    let started_at = Instant::now();
+    while !reader.is_finished() {
+        if started_at.elapsed() >= wait {
+            return Ok(None);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    join_process_output(reader).map(Some)
 }
 
 struct CommandSpec {
@@ -922,6 +957,56 @@ mod tests {
                 .and_then(|limit| limit.remaining_percent),
             Some(55.0)
         );
+    }
+
+    #[test]
+    fn command_timeout_does_not_wait_for_descendants_holding_output_pipes() {
+        for keep_parent_running in [false, true] {
+            let script = if keep_parent_running {
+                "setTimeout(() => {}, 4000)"
+            } else {
+                "process.exit(0)"
+            };
+            let child = std::process::Command::new("node")
+                .args(["-e", script])
+                .spawn()
+                .expect("Node should start for the command timeout test");
+            let (release_reader, reader_gate) = mpsc::channel::<()>();
+            let blocked_reader = std::thread::spawn(move || {
+                let _ = reader_gate.recv();
+                Ok(String::new())
+            });
+            let finished_reader = std::thread::spawn(|| Ok(String::new()));
+
+            let started_at = Instant::now();
+            let result = super::wait_for_command_result(
+                child,
+                blocked_reader,
+                finished_reader,
+                Duration::from_secs(1),
+            );
+            drop(release_reader);
+            let error = result.expect_err("open output pipes should time out");
+            assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+            assert!(started_at.elapsed() < Duration::from_secs(3));
+        }
+    }
+
+    #[test]
+    fn app_server_cleanup_does_not_wait_forever_for_stderr() {
+        let (release_reader, reader_gate) = mpsc::channel::<()>();
+        let blocked_reader = std::thread::spawn(move || {
+            let _ = reader_gate.recv();
+            Ok(String::new())
+        });
+
+        let started_at = Instant::now();
+        let output = super::join_process_output_within(blocked_reader, Duration::from_millis(50))
+            .expect("waiting for stderr should not fail");
+        drop(release_reader);
+
+        assert!(output.is_none());
+        assert!(started_at.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
